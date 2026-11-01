@@ -23,6 +23,10 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [clipboardNode, setClipboardNode] = useState(null);
 
+  // Histórico de Desfazer (Ctrl+Z) e Refazer (Ctrl+Y)
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
   // Pan & Zoom
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
@@ -39,6 +43,21 @@ export default function App() {
     setProfile(data || null);
   };
 
+  // Centraliza o mapa na tela de acordo com os nós
+  const centerMapNodes = useCallback((nodes) => {
+    if (nodes && nodes.length > 0) {
+      const avgX = nodes.reduce((acc, n) => acc + (n.x + (n.width || 170) / 2), 0) / nodes.length;
+      const avgY = nodes.reduce((acc, n) => acc + (n.y + (n.height || 75) / 2), 0) / nodes.length;
+      setTransform({
+        x: window.innerWidth / 2 - avgX,
+        y: window.innerHeight / 2 - avgY,
+        scale: 1
+      });
+    } else {
+      setTransform({ x: 0, y: 0, scale: 1 });
+    }
+  }, []);
+
   const handleSelectMap = useCallback((map) => {
     setCurrentMap(map);
     const loadedTabs = map.data?.tabs || [
@@ -47,10 +66,41 @@ export default function App() {
     setTabs(loadedTabs);
     setActiveTabId(loadedTabs[0]?.id || 'tab-1');
     setSelectedNodeId(null);
-    setTransform({ x: 0, y: 0, scale: 1 });
-  }, []);
 
-  // 1. Abre o mapa mais recente ou cria um novo se não houver nenhum
+    // Inicializa o histórico de Desfazer
+    setHistory([loadedTabs]);
+    setHistoryIndex(0);
+
+    // Centraliza automaticamente ao abrir!
+    centerMapNodes(loadedTabs[0]?.nodes || []);
+  }, [centerMapNodes]);
+
+  // Grava uma nova etapa no histórico
+  const pushToHistory = useCallback((newTabs) => {
+    setHistory((prev) => {
+      const currentBranch = prev.slice(0, historyIndex + 1);
+      return [...currentBranch, newTabs];
+    });
+    setHistoryIndex((prev) => prev + 1);
+  }, [historyIndex]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const newIdx = historyIndex - 1;
+      setTabs(history[newIdx]);
+      setHistoryIndex(newIdx);
+    }
+  }, [history, historyIndex]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const newIdx = historyIndex + 1;
+      setTabs(history[newIdx]);
+      setHistoryIndex(newIdx);
+    }
+  }, [history, historyIndex]);
+
+  // 1. Abre o mapa recente ou cria novo ao logar
   const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -63,10 +113,8 @@ export default function App() {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        // Encontrou mapa existente: abre o mais recente
         handleSelectMap(data[0]);
       } else {
-        // Primeiro acesso: cria o primeiro mapa automaticamente
         const newMapData = {
           tabs: [
             {
@@ -113,7 +161,7 @@ export default function App() {
     }
   }, [handleSelectMap]);
 
-  // 2. Monitoramento de Sessão: login ao entrar e carga direta do mapa
+  // 2. Monitoramento de Sessão
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
@@ -141,10 +189,9 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
-  // 3. Temporizador de 1 Hora de Inatividade
+  // 3. Logout por 1 hora de inatividade
   useEffect(() => {
     if (!user) return;
-
     const ONE_HOUR = 60 * 60 * 1000;
     let inactivityTimer;
 
@@ -184,24 +231,18 @@ export default function App() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0] || { nodes: [], connections: [] };
 
-  const updateActiveTabData = (updater) => {
-    setTabs((prev) => prev.map((t) => (t.id === activeTabId ? updater(t) : t)));
+  const updateActiveTabData = (updater, recordHistory = false) => {
+    setTabs((prev) => {
+      const nextTabs = prev.map((t) => (t.id === activeTabId ? updater(t) : t));
+      if (recordHistory) pushToHistory(nextTabs);
+      return nextTabs;
+    });
   };
 
-  // Atalhos de Teclado (P, Delete, Ctrl+C, Ctrl+V)
+  // Atalhos de teclado (P, Delete, Ctrl+C, Ctrl+V, Ctrl+Z, Ctrl+Y)
   const handleResetView = useCallback(() => {
-    if (!activeTab.nodes.length) {
-      setTransform({ x: 0, y: 0, scale: 1 });
-      return;
-    }
-    const avgX = activeTab.nodes.reduce((acc, n) => acc + n.x, 0) / activeTab.nodes.length;
-    const avgY = activeTab.nodes.reduce((acc, n) => acc + n.y, 0) / activeTab.nodes.length;
-    setTransform({
-      x: window.innerWidth / 2 - avgX,
-      y: window.innerHeight / 2 - avgY,
-      scale: 1
-    });
-  }, [activeTab]);
+    centerMapNodes(activeTab.nodes);
+  }, [centerMapNodes, activeTab.nodes]);
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedNodeId) return;
@@ -211,16 +252,23 @@ export default function App() {
       connections: t.connections.filter(
         (c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId
       )
-    }));
+    }), true);
     setSelectedNodeId(null);
-  }, [selectedNodeId]);
+  }, [selectedNodeId, activeTabId]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
       if (isInput) return;
 
-      if (e.key === 'p' || e.key === 'P') {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'p' || e.key === 'P') {
         handleResetView();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         handleDeleteSelected();
@@ -235,16 +283,16 @@ export default function App() {
             x: clipboardNode.x + 40,
             y: clipboardNode.y + 40
           };
-          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }));
+          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
           setSelectedNodeId(newNode.id);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleResetView, handleDeleteSelected, activeTab, selectedNodeId, clipboardNode]);
+  }, [handleResetView, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, clipboardNode]);
 
-  // Zoom centrado no mouse
+  // Zoom
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -256,7 +304,7 @@ export default function App() {
     setTransform({ x: newX, y: newY, scale: newScale });
   };
 
-  // Duplo clique no Canvas: cria nó no local do clique
+  // Duplo clique no vazio: cria nó onde clicou
   const handleDoubleClickCanvas = (e) => {
     if (e.target !== containerRef.current) return;
     const canvasX = (e.clientX - transform.x) / transform.scale;
@@ -276,7 +324,7 @@ export default function App() {
       imageData: null
     };
 
-    updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }));
+    updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id);
   };
 
@@ -294,11 +342,11 @@ export default function App() {
       textAlignment: 'Left',
       imageData: null
     };
-    updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }));
+    updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id);
   };
 
-  // Mouse e Arrastos
+  // Iniciar Pan
   const handleMouseDown = (e) => {
     if (e.target === containerRef.current || e.button === 1 || e.button === 2) {
       setIsPanning(true);
@@ -346,14 +394,20 @@ export default function App() {
   };
 
   const handleMouseUp = () => {
-    // Soltar linha no vazio: cria nó conectado automaticamente
+    if (draggingNode || resizingNode) {
+      pushToHistory(tabs);
+    }
+
+    // Soltar linha no vazio: cria nó conectado com direção de porta inteligente
     if (connecting && !connecting.connected) {
+      const newNodeW = 170;
+      const newNodeH = 75;
       const newNode = {
         id: `node-${Date.now()}`,
-        x: connecting.currentX - 85,
-        y: connecting.currentY - 37,
-        width: 170,
-        height: 75,
+        x: connecting.currentX - newNodeW / 2,
+        y: connecting.currentY - newNodeH / 2,
+        width: newNodeW,
+        height: newNodeH,
         text: '',
         backgroundColor: '#FFFFFF',
         textColor: '#1E293B',
@@ -362,19 +416,28 @@ export default function App() {
         imageData: null
       };
 
+      // Porta de entrada correta: se saiu da esquerda (3), entra na direita (1) do filho!
+      let bestToPort = 3;
+      if (connecting.fromPortIndex === 3) bestToPort = 1;
+      else if (connecting.fromPortIndex === 1) bestToPort = 3;
+      else if (connecting.fromPortIndex === 0) bestToPort = 2;
+      else if (connecting.fromPortIndex === 2) bestToPort = 0;
+
       const newConn = {
         id: `conn-${Date.now()}`,
         fromNodeId: connecting.fromNodeId,
         fromPortIndex: connecting.fromPortIndex,
         toNodeId: newNode.id,
-        toPortIndex: 3
+        toPortIndex: bestToPort
       };
 
-      updateActiveTabData((t) => ({
-        ...t,
-        nodes: [...t.nodes, newNode],
-        connections: [...t.connections, newConn]
-      }));
+      const nextTabs = tabs.map((t) =>
+        t.id === activeTabId
+          ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] }
+          : t
+      );
+      setTabs(nextTabs);
+      pushToHistory(nextTabs);
       setSelectedNodeId(newNode.id);
     }
 
@@ -384,7 +447,6 @@ export default function App() {
     setConnecting(null);
   };
 
-  // Conexão entre portas
   const handlePortMouseDown = (e, nodeId, portIndex) => {
     e.stopPropagation();
     const node = activeTab.nodes.find((n) => n.id === nodeId);
@@ -415,7 +477,11 @@ export default function App() {
           toNodeId,
           toPortIndex
         };
-        updateActiveTabData((t) => ({ ...t, connections: [...t.connections, newConn] }));
+        const nextTabs = tabs.map((t) =>
+          t.id === activeTabId ? { ...t, connections: [...t.connections, newConn] } : t
+        );
+        setTabs(nextTabs);
+        pushToHistory(nextTabs);
       }
       setConnecting((prev) => ({ ...prev, connected: true }));
     }
@@ -450,7 +516,7 @@ export default function App() {
             updateActiveTabData((t) => ({
               ...t,
               nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n))
-            }));
+            }), true);
           }
         }}
         selectedNode={selectedNode}
@@ -466,7 +532,7 @@ export default function App() {
                 textAlignment: patch.align !== undefined ? patch.align : n.textAlignment
               };
             })
-          }));
+          }), true);
         }}
         onDeleteSelected={handleDeleteSelected}
         onResetView={handleResetView}
@@ -477,121 +543,127 @@ export default function App() {
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={() => supabase.auth.signOut()}
         isSaving={isSaving}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG com Setas */}
+      {/* SVG Infinito com Orientação de Seta Perfeita e Sem Cortes */}
       <svg
         style={{
           position: 'absolute',
-          top: 0,
-          left: 0,
+          inset: 0,
           width: '100%',
           height: '100%',
           pointerEvents: 'none',
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transformOrigin: '0 0'
+          overflow: 'visible'
         }}
       >
         <defs>
-          <marker id="arrow-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <marker id="arrow-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#94A3B8" />
           </marker>
-          <marker id="arrow-drag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <marker id="arrow-drag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#2563EB" />
           </marker>
         </defs>
 
-        {activeTab.connections.map((conn) => {
-          const fromNode = activeTab.nodes.find((n) => n.id === conn.fromNodeId);
-          const toNode = activeTab.nodes.find((n) => n.id === conn.toNodeId);
-          if (!fromNode || !toNode) return null;
-          const p1 = getPortPosition(fromNode, conn.fromPortIndex);
-          const p2 = getPortPosition(toNode, conn.toPortIndex);
-          return (
-            <path
-              key={conn.id}
-              d={getBezierPath(p1, p2)}
-              fill="none"
-              stroke="#94A3B8"
-              strokeWidth="2"
-              strokeLinecap="round"
-              markerEnd="url(#arrow-fixed)"
-            />
-          );
-        })}
+        <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
+          {activeTab.connections.map((conn) => {
+            const fromNode = activeTab.nodes.find((n) => n.id === conn.fromNodeId);
+            const toNode = activeTab.nodes.find((n) => n.id === conn.toNodeId);
+            if (!fromNode || !toNode) return null;
+            const p1 = getPortPosition(fromNode, conn.fromPortIndex);
+            const p2 = getPortPosition(toNode, conn.toPortIndex);
+            return (
+              <path
+                key={conn.id}
+                d={getBezierPath(p1, p2)}
+                fill="none"
+                stroke="#94A3B8"
+                strokeWidth="2"
+                strokeLinecap="round"
+                markerEnd="url(#arrow-fixed)"
+              />
+            );
+          })}
 
-        {connecting && (
-          <path
-            d={getBezierPath(
-              getPortPosition(
-                activeTab.nodes.find((n) => n.id === connecting.fromNodeId),
-                connecting.fromPortIndex
-              ),
-              { x: connecting.currentX, y: connecting.currentY }
-            )}
-            fill="none"
-            stroke="#2563EB"
-            strokeWidth="2.5"
-            strokeDasharray="5,5"
-            markerEnd="url(#arrow-drag)"
-          />
-        )}
+          {connecting && (
+            <path
+              d={getBezierPath(
+                getPortPosition(
+                  activeTab.nodes.find((n) => n.id === connecting.fromNodeId),
+                  connecting.fromPortIndex
+                ),
+                { x: connecting.currentX, y: connecting.currentY }
+              )}
+              fill="none"
+              stroke="#2563EB"
+              strokeWidth="2.5"
+              strokeDasharray="5,5"
+              markerEnd="url(#arrow-drag)"
+            />
+          )}
+        </g>
       </svg>
 
-      {/* Camada dos Balões */}
+      {/* Camada Infinita dos Balões com Transparência de Cliques */}
       <div
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
           transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transformOrigin: '0 0'
+          transformOrigin: '0 0',
+          pointerEvents: 'none'
         }}
       >
         {activeTab.nodes.map((node, index) => (
-          <MindNode
-            key={node.id}
-            node={node}
-            isSelected={selectedNodeId === node.id}
-            isRoot={index === 0}
-            onSelect={(e, id) => {
-              e.stopPropagation();
-              setSelectedNodeId(id);
-            }}
-            onStartDrag={(e, id) => {
-              setDraggingNode({
-                id,
-                startX: e.clientX,
-                startY: e.clientY,
-                origX: node.x,
-                origY: node.y
-              });
-            }}
-            onPortMouseDown={handlePortMouseDown}
-            onPortMouseUp={handlePortMouseUp}
-            onResizeStart={(e, id) => {
-              e.stopPropagation();
-              setResizingNode({
-                id,
-                startX: e.clientX,
-                startY: e.clientY,
-                origW: node.width || 170,
-                origH: node.height || 75
-              });
-            }}
-            onUpdateText={(id, text) => {
-              updateActiveTabData((t) => ({
-                ...t,
-                nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n))
-              }));
-            }}
-            onPaste={(id, patch) => {
-              updateActiveTabData((t) => ({
-                ...t,
-                nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n))
-              }));
-            }}
-          />
+          <div key={node.id} style={{ pointerEvents: 'auto' }}>
+            <MindNode
+              node={node}
+              isSelected={selectedNodeId === node.id}
+              isRoot={index === 0}
+              onSelect={(e, id) => {
+                e.stopPropagation();
+                setSelectedNodeId(id);
+              }}
+              onStartDrag={(e, id) => {
+                setDraggingNode({
+                  id,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  origX: node.x,
+                  origY: node.y
+                });
+              }}
+              onPortMouseDown={handlePortMouseDown}
+              onPortMouseUp={handlePortMouseUp}
+              onResizeStart={(e, id) => {
+                e.stopPropagation();
+                setResizingNode({
+                  id,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  origW: node.width || 170,
+                  origH: node.height || 75
+                });
+              }}
+              onUpdateText={(id, text) => {
+                updateActiveTabData((t) => ({
+                  ...t,
+                  nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n))
+                }), true);
+              }}
+              onPaste={(id, patch) => {
+                updateActiveTabData((t) => ({
+                  ...t,
+                  nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n))
+                }), true);
+              }}
+            />
+          </div>
         ))}
       </div>
 
@@ -625,11 +697,15 @@ export default function App() {
               ],
               connections: []
             };
-            setTabs((prev) => [...prev, newTab]);
+            const nextTabs = [...tabs, newTab];
+            setTabs(nextTabs);
+            pushToHistory(nextTabs);
             setActiveTabId(newId);
           }}
           onRenameTab={(id, title) => {
-            setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
+            const nextTabs = tabs.map((t) => (t.id === id ? { ...t, title } : t));
+            setTabs(nextTabs);
+            pushToHistory(nextTabs);
           }}
         />
       )}
