@@ -16,7 +16,7 @@ body, html, #root {
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   background-color: var(--bg-canvas);
   color: var(--text-main);
-  touch-action: none; /* Impede o scroll padrão do navegador no celular */
+  touch-action: none;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -36,7 +36,7 @@ body, html, #root {
   cursor: grabbing;
 }
 
-/* Barra Superior Flutuante Totalmente Responsiva */
+/* 1. BARRA SUPERIOR (DESKTOP E HEADER DO CELULAR) */
 .top-toolbar {
   position: fixed;
   top: 12px;
@@ -44,25 +44,16 @@ body, html, #root {
   transform: translateX(-50%);
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);
-  padding: 6px 10px;
+  padding: 6px 12px;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   z-index: 100;
   border: 1px solid #E2E8F0;
-  max-width: calc(100vw - 20px);
+  max-width: calc(100vw - 24px);
   box-sizing: border-box;
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
-}
-
-.top-toolbar::-webkit-scrollbar {
-  display: none; /* Chrome, Safari */
 }
 
 /* Botões Planos e Arredondados */
@@ -71,7 +62,7 @@ body, html, #root {
   border: none;
   outline: none;
   border-radius: 8px;
-  padding: 6px 7px;
+  padding: 6px 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -104,24 +95,82 @@ body, html, #root {
   flex-shrink: 0;
 }
 
-/* Balões / Cards de Nós */
-.mind-node {
-  position: absolute;
-  min-width: 120px;
-  max-width: 480px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  border: 1.5px solid var(--node-border);
-  cursor: move;
-  padding: 12px 14px 20px 14px;
-  box-sizing: border-box;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+/* 2. BOTÕES FLUTUANTES RÁPIDOS PARA CELULAR (CANTO INFERIOR DIREITO) */
+.mobile-fab-container {
+  display: none;
+  position: fixed;
+  right: 16px;
+  bottom: 64px;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 95;
 }
 
-/* Barra de Abas no Rodapé com Rolagem Suave em Celulares */
+.fab-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #2563EB;
+  color: #FFFFFF;
+  border: none;
+  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fab-btn.secondary {
+  width: 42px;
+  height: 42px;
+  background: #FFFFFF;
+  color: #475569;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+/* 3. PAINEL DE FORMATAÇÃO CONTEXTUAL (SURGE PERTO DO POLEGAR NO CELULAR) */
+.mobile-format-drawer {
+  display: none;
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  padding: 8px 12px;
+  border-radius: 14px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+  border: 1px solid #E2E8F0;
+  z-index: 110;
+  width: calc(100vw - 24px);
+  max-width: 420px;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 8px;
+  animation: slideUp 0.18s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translate(-50%, 20px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+/* Carrossel de 10 Cores no Celular */
+.colors-carousel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+.colors-carousel::-webkit-scrollbar { display: none; }
+
+/* 4. BARRA DE ABAS NO RODAPÉ */
 .bottom-tabs {
   position: fixed;
-  bottom: 14px;
+  bottom: 12px;
   left: 16px;
   max-width: calc(100vw - 32px);
   background: rgba(255, 255, 255, 0.95);
@@ -132,16 +181,13 @@ body, html, #root {
   display: flex;
   align-items: center;
   gap: 4px;
-  z-index: 100;
+  z-index: 90;
   border: 1px solid #E2E8F0;
   overflow-x: auto;
   box-sizing: border-box;
   scrollbar-width: none;
 }
-
-.bottom-tabs::-webkit-scrollbar {
-  display: none;
-}
+.bottom-tabs::-webkit-scrollbar { display: none; }
 
 .tab-item {
   padding: 5px 12px;
@@ -156,35 +202,48 @@ body, html, #root {
   white-space: nowrap;
   flex-shrink: 0;
 }
-
 .tab-item.active {
   background: #EFF6FF;
   color: var(--primary-blue);
   font-weight: 600;
 }
 
-/* Ajustes Específicos para Telas Menores e Celulares */
+/* REGRAS EXCLUSIVAS DE CELULAR / TELAS ESTREITAS (<= 768px) */
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: flex !important;
+  }
+  .mobile-fab-container {
+    display: flex;
+  }
+  .mobile-format-drawer.active {
+    display: flex;
+  }
   .top-toolbar {
     top: 8px;
-    padding: 5px 8px;
-    gap: 3px;
+    padding: 4px 8px;
+    gap: 2px;
     border-radius: 10px;
-    max-width: calc(100vw - 16px);
   }
-
   .btn-icon {
-    padding: 6px;
+    padding: 5px 6px;
   }
-
   .bottom-tabs {
     left: 8px;
     bottom: 8px;
-    max-width: calc(100vw - 16px);
+    max-width: calc(100vw - 80px); /* Deixa espaço para o botão flutuante */
   }
+}
 
-  .tab-item {
-    padding: 5px 10px;
-    font-size: 12px;
+/* REGRAS EXCLUSIVAS DE PC / DESKTOP (> 768px) */
+@media (min-width: 769px) {
+  .desktop-only {
+    display: flex !important;
+  }
+  .mobile-only {
+    display: none !important;
   }
 }
