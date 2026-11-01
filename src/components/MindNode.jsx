@@ -11,25 +11,35 @@ export default function MindNode({
   onPortMouseUp,
   onResizeStart,
   onUpdateText,
-  onPaste
+  onPaste,
+  onHeightChange
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text || '');
   const editorRef = useRef(null);
+  const nodeRef = useRef(null);
   const pasteFileRef = useRef(null);
 
   useEffect(() => {
     setEditText(node.text || '');
   }, [node.text]);
 
-  // Expansão imediata de todas as linhas ao abrir para editar (sem ficar em uma linha só!)
+  // Sincroniza a altura real exata do elemento na tela para as portas ficarem 100% no centro
+  useEffect(() => {
+    if (nodeRef.current && onHeightChange) {
+      const actualHeight = nodeRef.current.offsetHeight;
+      if (actualHeight && Math.abs(actualHeight - (node.height || 0)) > 2) {
+        onHeightChange(node.id, actualHeight);
+      }
+    }
+  });
+
+  // Expansão imediata de todas as linhas ao abrir para editar
   useEffect(() => {
     if (isEditing && editorRef.current) {
       editorRef.current.focus();
       const val = editorRef.current.value;
       editorRef.current.setSelectionRange(val.length, val.length);
-      
-      // Ajusta a altura na hora para comportar todo o texto existente
       editorRef.current.style.height = 'auto';
       editorRef.current.style.height = `${Math.max(editorRef.current.scrollHeight, 26)}px`;
     }
@@ -63,16 +73,14 @@ export default function MindNode({
     }
   };
 
-  // Leitura robusta da área de transferência com suporte direto a imagens e textos
+  // Leitura da área de transferência com suporte direto a imagens e textos
   const handlePasteClick = async (e) => {
     e.stopPropagation();
 
-    // 1. Tenta acessar via API de Área de Transferência
     if (navigator.clipboard && navigator.clipboard.read) {
       try {
         const items = await navigator.clipboard.read();
         for (const item of items) {
-          // Busca imagem na área de transferência (print ou cópia)
           const imgType = item.types.find((t) => t.startsWith('image/'));
           if (imgType) {
             const blob = await item.getType(imgType);
@@ -84,7 +92,6 @@ export default function MindNode({
             return;
           }
 
-          // Se for texto simples
           if (item.types.includes('text/plain')) {
             const textBlob = await item.getType('text/plain');
             const text = await textBlob.text();
@@ -95,16 +102,14 @@ export default function MindNode({
           }
         }
       } catch (err) {
-        console.warn('Leitura direta bloqueada pelo navegador, tentando fallback:', err);
+        console.warn('Leitura direta bloqueada:', err);
       }
     }
 
-    // 2. Fallback de texto simples
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
         if (text && text.trim()) {
-          // Se for link de imagem da internet, anexa como imagem
           if (/^https?:\/\/.*\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(text.trim())) {
             onPaste(node.id, { imageData: text.trim() });
             return;
@@ -114,7 +119,6 @@ export default function MindNode({
         }
       }
     } catch {
-      // Se o navegador bloquear o acesso sem permissão, abre o seletor de arquivos de imagem direto
       pasteFileRef.current?.click();
     }
   };
@@ -137,6 +141,7 @@ export default function MindNode({
 
   return (
     <div
+      ref={nodeRef}
       style={{
         position: 'absolute',
         left: `${node.x}px`,
@@ -201,14 +206,14 @@ export default function MindNode({
         </>
       )}
 
-      {/* 4 Portas Conectoras: Bolinhas azuis com "+" */}
+      {/* 4 Portas Conectoras: Bolinhas azuis com "+" milimetricamente centralizadas */}
       {isSelected &&
         [0, 1, 2, 3].map((portIdx) => {
           const positions = [
-            { top: '-11px', left: '50%', transform: 'translateX(-50%)' },
-            { right: '-11px', top: '50%', transform: 'translateY(-50%)' },
-            { bottom: '-11px', left: '50%', transform: 'translateX(-50%)' },
-            { left: '-11px', top: '50%', transform: 'translateY(-50%)' }
+            { top: '-16px', left: '50%', transform: 'translateX(-50%)' },      // Topo
+            { right: '-16px', top: '50%', transform: 'translateY(-50%)' },     // Direita (Centro exato)
+            { bottom: '-16px', left: '50%', transform: 'translateX(-50%)' },   // Base
+            { left: '-16px', top: '50%', transform: 'translateY(-50%)' }       // Esquerda (Centro exato)
           ];
           return (
             <div
@@ -216,8 +221,8 @@ export default function MindNode({
               style={{
                 position: 'absolute',
                 ...positions[portIdx],
-                width: '28px',
-                height: '28px',
+                width: '32px',
+                height: '32px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -232,7 +237,7 @@ export default function MindNode({
                 e.stopPropagation();
                 onPortMouseUp(e, node.id, portIdx);
               }}
-              title="Puxe para criar um novo balão"
+              title="Puxe para criar ou ligar a outro balão"
             >
               <div
                 style={{
@@ -288,7 +293,7 @@ export default function MindNode({
         </>
       )}
 
-      {/* Imagem Proporcional sem distorção */}
+      {/* Imagem Proporcional */}
       {hasImage && (
         <img
           src={node.imageData}
@@ -306,7 +311,7 @@ export default function MindNode({
         />
       )}
 
-      {/* Editor de Texto com Altura Total e Suporte Multilinha */}
+      {/* Editor de Texto Multilinha */}
       {isEditing ? (
         <textarea
           ref={editorRef}
