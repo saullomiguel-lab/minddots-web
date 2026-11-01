@@ -25,7 +25,6 @@ export default function App() {
   const [activeTabId, setActiveTabId] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
-  const [clipboardNode, setClipboardNode] = useState(null);
 
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -37,7 +36,6 @@ export default function App() {
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
   const [connecting, setConnecting] = useState(null);
-  const [draggingCP, setDraggingCP] = useState(null); 
   const containerRef = useRef(null);
 
   const loadUserProfile = async (userId) => {
@@ -56,8 +54,7 @@ export default function App() {
     });
     const contentW = Math.max(maxX - minX, 120); const contentH = Math.max(maxY - minY, 80);
     const availableW = window.innerWidth - padding * 2; const availableH = window.innerHeight - padding * 2 - 60;
-    const scaleX = availableW / contentW; const scaleY = availableH / contentH;
-    const optimalScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.25), 1.15);
+    const optimalScale = Math.min(Math.max(Math.min(availableW / contentW, availableH / contentH), 0.25), 1.15);
     const centerX = (minX + maxX) / 2; const centerY = (minY + maxY) / 2;
     setTransform({ x: window.innerWidth / 2 - centerX * optimalScale, y: window.innerHeight / 2 - centerY * optimalScale, scale: optimalScale });
   }, []);
@@ -65,31 +62,35 @@ export default function App() {
   const handleSelectMap = useCallback((map) => {
     setCurrentMap(map);
     const loadedTabs = map.data?.tabs || [{ id: 'tab-1', title: 'Mapa 1', nodes: [], connections: [] }];
-    setTabs(loadedTabs); setActiveTabId(loadedTabs[0]?.id || 'tab-1');
-    setSelectedNodeId(null); setSelectedConnectionId(null);
-    setHistory([JSON.parse(JSON.stringify(loadedTabs))]); setHistoryIndex(0);
+    setTabs(loadedTabs); 
+    setActiveTabId(loadedTabs[0]?.id || 'tab-1');
+    setSelectedNodeId(null); 
+    setSelectedConnectionId(null);
+    setHistory([JSON.parse(JSON.stringify(loadedTabs))]); 
+    setHistoryIndex(0);
     fitContentToScreen(loadedTabs[0]?.nodes || []);
   }, [fitContentToScreen]);
 
   const pushToHistory = useCallback((newTabs) => {
     if (!newTabs || !Array.isArray(newTabs)) return;
-    setHistory((prev) => {
-      const currentBranch = prev.slice(0, historyIndex + 1);
-      return [...currentBranch, JSON.parse(JSON.stringify(newTabs))];
-    });
+    setHistory((prev) => [...prev.slice(0, historyIndex + 1), JSON.parse(JSON.stringify(newTabs))]);
     setHistoryIndex((prev) => prev + 1);
   }, [historyIndex]);
 
   const handleUndo = useCallback(() => {
     if (historyIndex > 0 && history[historyIndex - 1]) {
-      const newIdx = historyIndex - 1; setTabs(JSON.parse(JSON.stringify(history[newIdx]))); setHistoryIndex(newIdx);
+      const newIdx = historyIndex - 1; 
+      setTabs(JSON.parse(JSON.stringify(history[newIdx]))); 
+      setHistoryIndex(newIdx);
       setSelectedNodeId(null); setSelectedConnectionId(null);
     }
   }, [history, historyIndex]);
 
   const handleRedo = useCallback(() => {
     if (historyIndex < history.length - 1 && history[historyIndex + 1]) {
-      const newIdx = historyIndex + 1; setTabs(JSON.parse(JSON.stringify(history[newIdx]))); setHistoryIndex(newIdx);
+      const newIdx = historyIndex + 1; 
+      setTabs(JSON.parse(JSON.stringify(history[newIdx]))); 
+      setHistoryIndex(newIdx);
       setSelectedNodeId(null); setSelectedConnectionId(null);
     }
   }, [history, historyIndex]);
@@ -98,12 +99,14 @@ export default function App() {
     try {
       const { data, error } = await supabase.from('maps').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1);
       if (error) throw error;
-      if (data && data.length > 0) { handleSelectMap(data[0]); } else {
+      if (data && data.length > 0) { 
+        handleSelectMap(data[0]); 
+      } else {
         const newMapData = { tabs: [{ id: `tab-${Date.now()}`, title: 'Mapa 1', nodes: [{ id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 16, textAlignment: 'Center', imageData: null }], connections: [] }] };
         const { data: createdMap, error: createError } = await supabase.from('maps').insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData, team_id: profileData?.team_id || null }]).select().single();
         if (!createError && createdMap) { handleSelectMap(createdMap); }
       }
-    } catch (err) { console.error('Erro ao carregar mapa recente:', err); }
+    } catch (err) { console.error('Erro ao carregar mapa:', err); }
   }, [handleSelectMap]);
 
   useEffect(() => {
@@ -155,7 +158,7 @@ export default function App() {
 
   const handleDeleteTab = useCallback((tabId) => {
     if (safeTabs.length <= 1) { alert('Você não pode excluir a última aba do mapa.'); return; }
-    if (!window.confirm('Tem certeza que deseja excluir esta aba e seu conteúdo?')) return;
+    if (!window.confirm('Tem certeza que deseja excluir esta aba?')) return;
     const nextTabs = safeTabs.filter(t => t.id !== tabId);
     setTabs(nextTabs); pushToHistory(nextTabs);
     if (activeTabId === tabId) { setActiveTabId(nextTabs[0].id); fitContentToScreen(nextTabs[0].nodes); }
@@ -184,14 +187,38 @@ export default function App() {
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
     const newScale = Math.min(Math.max(transform.scale * zoomFactor, 0.25), 3);
     const mouseX = e.clientX; const mouseY = e.clientY;
-    const newX = mouseX - (mouseX - transform.x) * (newScale / transform.scale);
-    const newY = mouseY - (mouseY - transform.y) * (newScale / transform.scale);
-    setTransform({ x: newX, y: newY, scale: newScale });
+    setTransform({
+      x: mouseX - (mouseX - transform.x) * (newScale / transform.scale),
+      y: mouseY - (mouseY - transform.y) * (newScale / transform.scale),
+      scale: newScale
+    });
   };
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1 && e.target === containerRef.current) {
+      touchStateRef.current.isTracking = true;
+      touchStateRef.current.lastX = e.touches[0].clientX; 
+      touchStateRef.current.lastY = e.touches[0].clientY;
+      setSelectedNodeId(null); setSelectedConnectionId(null);
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 1 && touchStateRef.current.isTracking) {
+      const dx = e.touches[0].clientX - touchStateRef.current.lastX; 
+      const dy = e.touches[0].clientY - touchStateRef.current.lastY;
+      touchStateRef.current.lastX = e.touches[0].clientX; 
+      touchStateRef.current.lastY = e.touches[0].clientY;
+      setTransform((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+    }
+  };
+
+  const handleTouchEnd = () => { touchStateRef.current.isTracking = false; };
 
   const handleDoubleClickCanvas = (e) => {
     if (e.target !== containerRef.current) return;
-    const canvasX = (e.clientX - transform.x) / transform.scale; const canvasY = (e.clientY - transform.y) / transform.scale;
+    const canvasX = (e.clientX - transform.x) / transform.scale; 
+    const canvasY = (e.clientY - transform.y) / transform.scale;
     const newNode = { id: `node-${Date.now()}`, x: canvasX - 85, y: canvasY - 37, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null };
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
@@ -205,21 +232,14 @@ export default function App() {
 
   const handleMouseDown = (e) => {
     if (e.target === containerRef.current || e.button === 1 || e.button === 2) {
-      setIsPanning(true); panStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+      setIsPanning(true); 
+      panStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
       setSelectedNodeId(null); setSelectedConnectionId(null);
     }
   };
 
-  const handleStartReanchor = (e, conn, end) => {
-    if (e.stopPropagation) e.stopPropagation();
-    setDraggingNode(null); setResizingNode(null); setDraggingCP(null);
-    const canvasMouseX = (e.clientX - transform.x) / transform.scale; const canvasMouseY = (e.clientY - transform.y) / transform.scale;
-    if (end === 'to') setConnecting({ fromNodeId: conn.fromNodeId, fromPortIndex: conn.fromPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'to' });
-    else setConnecting({ targetNodeId: conn.toNodeId, targetPortIndex: conn.toPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'from' });
-  };
-
   const handlePortMouseDown = (e, nodeId, portIndex) => {
-    setDraggingNode(null); setResizingNode(null); setSelectedConnectionId(null); setDraggingCP(null);
+    setDraggingNode(null); setResizingNode(null); setSelectedConnectionId(null);
     const node = activeTab.nodes.find((n) => n.id === nodeId);
     const pos = getPortPosition(node, portIndex);
     setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y, connected: false });
@@ -229,7 +249,7 @@ export default function App() {
   const isUserAdminOrTeamOwner = profile?.role === 'admin' || profile?.is_team_owner;
 
   return (
-    <div ref={containerRef} className={`canvas-container ${isPanning ? 'panning' : ''}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onDoubleClick={handleDoubleClickCanvas} onContextMenu={(e) => e.preventDefault()}>
+    <div ref={containerRef} className={`canvas-container ${isPanning ? 'panning' : ''}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDoubleClick={handleDoubleClickCanvas} onContextMenu={(e) => e.preventDefault()}>
       <Toolbar 
         onAddNode={handleAddNode} onExportImage={handleExportImage} onExportFile={handleExportFile} 
         onAddImage={(img) => { if (selectedNodeId) { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true); } }}
@@ -243,17 +263,18 @@ export default function App() {
       <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
         <defs>
           <marker id="arrow-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#94A3B8" /></marker>
-          <marker id="arrow-drag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#2563EB" /></marker>
         </defs>
         <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
           {activeTab.connections.map((conn) => {
-            const fromNode = activeTab.nodes.find((n) => n.id === conn.fromNodeId); const toNode = activeTab.nodes.find((n) => n.id === conn.toNodeId);
+            const fromNode = activeTab.nodes.find((n) => n.id === conn.fromNodeId); 
+            const toNode = activeTab.nodes.find((n) => n.id === conn.toNodeId);
             if (!fromNode || !toNode) return null;
-            const p1 = getPortPosition(fromNode, conn.fromPortIndex); const p2 = getPortPosition(toNode, conn.toPortIndex);
+            const p1 = getPortPosition(fromNode, conn.fromPortIndex); 
+            const p2 = getPortPosition(toNode, conn.toPortIndex);
             const isConnSelected = selectedConnectionId === conn.id;
             return (
               <g key={conn.id} onClick={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedNodeId(null); }}>
-                <path d={getBezierPath(p1, p2, conn)} fill="none" stroke={isConnSelected ? '#2563EB' : '#94A3B8'} strokeWidth={isConnSelected ? 3.2 : 2} markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'} />
+                <path d={getBezierPath(p1, p2, conn)} fill="none" stroke={isConnSelected ? '#2563EB' : '#94A3B8'} strokeWidth={isConnSelected ? 3.2 : 2} markerEnd="url(#arrow-fixed)" />
                 <path d={getBezierPath(p1, p2, conn)} fill="none" stroke="transparent" strokeWidth={30} style={{ pointerEvents: 'stroke', cursor: 'pointer' }} />
               </g>
             );
@@ -263,7 +284,15 @@ export default function App() {
       <div style={{ position: 'absolute', top: 0, left: 0, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
         {activeTab.nodes.map((node, index) => (
           <div key={node.id} style={{ pointerEvents: 'auto' }}>
-            <MindNode node={node} isSelected={selectedNodeId === node.id} isRoot={index === 0} onSelect={(e, id) => { setSelectedNodeId(id); setSelectedConnectionId(null); }} onStartDrag={(pos, id) => setDraggingNode({ id, startX: pos.clientX, startY: pos.clientY, origX: node.x, origY: node.y })} onPortMouseDown={handlePortMouseDown} onHeightChange={handleHeightSync} onResizeStart={(pos, id, dir) => { const n = activeTab.nodes.find(x => x.id === id); setResizingNode({ id, direction: dir, startX: pos.clientX, startY: pos.clientY, origX: n.x, origY: n.y, origW: n.width || 170, origH: n.height || 75 }); }} onUpdateText={(id, text) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n)) }), true)} onPaste={(id, patch) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }), true)} />
+            <MindNode 
+              node={node} isSelected={selectedNodeId === node.id} isRoot={index === 0} 
+              onSelect={(e, id) => { setSelectedNodeId(id); setSelectedConnectionId(null); }} 
+              onStartDrag={(pos, id) => setDraggingNode({ id, startX: pos.clientX, startY: pos.clientY, origX: node.x, origY: node.y })} 
+              onPortMouseDown={handlePortMouseDown} onHeightChange={handleHeightSync} 
+              onResizeStart={(pos, id, dir) => { const n = activeTab.nodes.find(x => x.id === id); setResizingNode({ id, direction: dir, startX: pos.clientX, startY: pos.clientY, origX: n.x, origY: n.y, origW: n.width || 170, origH: n.height || 75 }); }} 
+              onUpdateText={(id, text) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n)) }), true)} 
+              onPaste={(id, patch) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }), true)} 
+            />
           </div>
         ))}
       </div>
