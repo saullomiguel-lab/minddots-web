@@ -13,8 +13,9 @@ import {
   Shield,
   LogIn,
   LogOut,
-  CheckCloud,
-  Cloud
+  Cloud,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { PASTEL_COLORS } from '../constants';
 
@@ -32,7 +33,11 @@ export default function Toolbar({
   user,
   onOpenAuth,
   onLogout,
-  isSaving
+  isSaving,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo
 }) {
   const fileInputRef = useRef(null);
 
@@ -48,9 +53,31 @@ export default function Toolbar({
 
   return (
     <header className="top-toolbar">
-      {/* Botão Meus Mapas */}
+      {/* Meus Mapas */}
       <button className="btn-icon" title="Meus Mapas" onClick={onOpenMaps}>
         <FolderOpen size={18} />
+      </button>
+
+      <div className="divider" />
+
+      {/* Botões Desfazer e Refazer (tipo Word) */}
+      <button 
+        className="btn-icon" 
+        title="Desfazer (Ctrl + Z)" 
+        disabled={!canUndo} 
+        onClick={onUndo}
+        style={{ opacity: canUndo ? 1 : 0.4 }}
+      >
+        <Undo2 size={17} />
+      </button>
+      <button 
+        className="btn-icon" 
+        title="Refazer (Ctrl + Y)" 
+        disabled={!canRedo} 
+        onClick={onRedo}
+        style={{ opacity: canRedo ? 1 : 0.4 }}
+      >
+        <Redo2 size={17} />
       </button>
 
       <div className="divider" />
@@ -60,7 +87,7 @@ export default function Toolbar({
         <Plus size={18} />
       </button>
 
-      {/* Botão Inserir Imagem */}
+      {/* Inserir Imagem */}
       <button className="btn-icon" title="Inserir Imagem" onClick={() => fileInputRef.current?.click()}>
         <ImageIcon size={18} />
       </button>
@@ -72,7 +99,7 @@ export default function Toolbar({
         style={{ display: 'none' }} 
       />
 
-      {/* Centralizar Mapa (Atalho P) */}
+      {/* Centralizar Mapa (Tecla P) */}
       <button className="btn-icon" title="Centralizar Mapa (Tecla P)" onClick={onResetView}>
         <Target size={18} />
       </button>
@@ -97,31 +124,31 @@ export default function Toolbar({
 
       {/* Alinhamento de Texto */}
       <button 
-        className={`btn-icon ${selectedNode?.align === 'left' ? 'active' : ''}`}
+        className={`btn-icon ${selectedNode?.textAlignment === 'Left' ? 'active' : ''}`}
         title="Alinhar à Esquerda" 
         disabled={!selectedNode}
-        onClick={() => onUpdateSelected({ align: 'left' })}>
+        onClick={() => onUpdateSelected({ align: 'Left' })}>
         <AlignLeft size={16} />
       </button>
       <button 
-        className={`btn-icon ${selectedNode?.align === 'center' ? 'active' : ''}`}
+        className={`btn-icon ${selectedNode?.textAlignment === 'Center' ? 'active' : ''}`}
         title="Centralizar Texto" 
         disabled={!selectedNode}
-        onClick={() => onUpdateSelected({ align: 'center' })}>
+        onClick={() => onUpdateSelected({ align: 'Center' })}>
         <AlignCenter size={16} />
       </button>
       <button 
-        className={`btn-icon ${selectedNode?.align === 'right' ? 'active' : ''}`}
+        className={`btn-icon ${selectedNode?.textAlignment === 'Right' ? 'active' : ''}`}
         title="Alinhar à Direita" 
         disabled={!selectedNode}
-        onClick={() => onUpdateSelected({ align: 'right' })}>
+        onClick={() => onUpdateSelected({ align: 'Right' })}>
         <AlignRight size={16} />
       </button>
       <button 
-        className={`btn-icon ${selectedNode?.align === 'justify' ? 'active' : ''}`}
+        className={`btn-icon ${selectedNode?.textAlignment === 'Justify' ? 'active' : ''}`}
         title="Justificar Texto" 
         disabled={!selectedNode}
-        onClick={() => onUpdateSelected({ align: 'justify' })}>
+        onClick={() => onUpdateSelected({ align: 'Justify' })}>
         <AlignJustify size={16} />
       </button>
 
@@ -132,7 +159,7 @@ export default function Toolbar({
         className="btn-icon" 
         title="Aumentar Fonte (A+)" 
         disabled={!selectedNode}
-        onClick={() => onUpdateSelected({ fontSize: Math.min((selectedNode?.fontSize || 14) + 2, 32) })}>
+        onClick={() => onUpdateSelected({ fontSize: Math.min((selectedNode?.fontSize || 14) + 2, 36) })}>
         <span style={{ fontWeight: 700, fontSize: '13px' }}>A+</span>
       </button>
       <button 
@@ -157,7 +184,7 @@ export default function Toolbar({
               height: '18px',
               borderRadius: '50%',
               backgroundColor: color,
-              border: selectedNode?.color === color ? '2px solid #3B82F6' : '1px solid #CBD5E1',
+              border: selectedNode?.backgroundColor === color ? '2px solid #2563EB' : '1px solid #CBD5E1',
               cursor: selectedNode ? 'pointer' : 'default',
               padding: 0
             }}
