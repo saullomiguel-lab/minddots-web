@@ -15,17 +15,14 @@ export default function MindNode({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text || '');
   const editorRef = useRef(null);
-  const nodeRef = useRef(null);
 
   useEffect(() => {
     setEditText(node.text || '');
   }, [node.text]);
 
-  // Foco automático ao entrar em modo de edição
   useEffect(() => {
     if (isEditing && editorRef.current) {
       editorRef.current.focus();
-      // Posiciona cursor no final
       const val = editorRef.current.value;
       editorRef.current.setSelectionRange(val.length, val.length);
     }
@@ -51,7 +48,6 @@ export default function MindNode({
     }
   };
 
-  // Ajusta altura dinamicamente ao digitar (Auto-grow)
   const handleInput = (e) => {
     setEditText(e.target.value);
     if (editorRef.current) {
@@ -65,8 +61,7 @@ export default function MindNode({
     try {
       const clipboardItems = await navigator.clipboard.read();
       for (const item of clipboardItems) {
-        // Se for imagem
-        const imageType = item.types.find(t => t.startsWith('image/'));
+        const imageType = item.types.find((t) => t.startsWith('image/'));
         if (imageType) {
           const blob = await item.getType(imageType);
           const reader = new FileReader();
@@ -75,13 +70,11 @@ export default function MindNode({
           return;
         }
       }
-      // Se for texto
       const text = await navigator.clipboard.readText();
       if (text) {
         onPaste(node.id, { text: (node.text ? node.text + ' ' : '') + text });
       }
-    } catch (err) {
-      // Fallback para leitura de texto básica
+    } catch {
       const text = prompt('Cole seu texto aqui:');
       if (text) onPaste(node.id, { text: (node.text ? node.text + ' ' : '') + text });
     }
@@ -93,7 +86,6 @@ export default function MindNode({
 
   return (
     <div
-      ref={nodeRef}
       style={{
         position: 'absolute',
         left: `${node.x}px`,
@@ -103,27 +95,29 @@ export default function MindNode({
         backgroundColor: node.backgroundColor || '#FFFFFF',
         borderRadius: '10px',
         border: isSelected ? '2px solid #2563EB' : '1.5px solid #E2E8F0',
-        boxShadow: isSelected ? '0 0 0 3px rgba(37, 99, 235, 0.2), 0 4px 12px rgba(0,0,0,0.08)' : '0 2px 8px rgba(0,0,0,0.05)',
-        // Padding: 14px lados, 12px topo, +20px respiro na base para g, j, p, q, y
+        boxShadow: isSelected
+          ? '0 0 0 3px rgba(37, 99, 235, 0.2), 0 4px 12px rgba(0,0,0,0.08)'
+          : '0 2px 8px rgba(0,0,0,0.05)',
         padding: '12px 14px 20px 14px',
         boxSizing: 'border-box',
         cursor: isEditing ? 'text' : 'move',
         userSelect: isEditing ? 'text' : 'none',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
         zIndex: isSelected ? 20 : 5
       }}
       onMouseDown={(e) => {
-        if (!isEditing) {
+        // Apenas arrasta se o clique foi com botão esquerdo e não estiver editando
+        if (e.button === 0 && !isEditing) {
           onSelect(e, node.id);
           onStartDrag(e, node.id);
         }
       }}
       onDoubleClick={handleDoubleClick}
     >
-      {/* Botão Flutuante 📋 Colar (Aparece no topo esquerdo quando selecionado) */}
+      {/* Botão Flutuante 📋 Colar */}
       {isSelected && !isEditing && (
         <button
           onClick={handlePasteClick}
+          onMouseDown={(e) => e.stopPropagation()}
           title="Colar texto ou imagem da área de transferência"
           style={{
             position: 'absolute',
@@ -148,48 +142,60 @@ export default function MindNode({
         </button>
       )}
 
-      {/* 4 Portas Conectoras Externas (8px para fora, raio 5px com hit-test de 32px) */}
-      {isSelected && [0, 1, 2, 3].map((portIdx) => {
-        const positions = [
-          { top: '-13px', left: '50%', transform: 'translateX(-50%)' },      // Topo
-          { right: '-13px', top: '50%', transform: 'translateY(-50%)' },     // Direita
-          { bottom: '-13px', left: '50%', transform: 'translateX(-50%)' },   // Base
-          { left: '-13px', top: '50%', transform: 'translateY(-50%)' }       // Esquerda
-        ];
-        return (
-          <div
-            key={portIdx}
-            style={{
-              position: 'absolute',
-              ...positions[portIdx],
-              width: '26px',
-              height: '26px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'crosshair',
-              zIndex: 35
-            }}
-            onMouseDown={(e) => onPortMouseDown(e, node.id, portIdx)}
-            onMouseUp={(e) => onPortMouseUp(e, node.id, portIdx)}
-          >
-            <div style={{
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              backgroundColor: '#3B82F6',
-              border: '1.5px solid #FFFFFF',
-              boxShadow: '0 0 0 1px #2563EB',
-              pointerEvents: 'none'
-            }} />
-          </div>
-        );
-      })}
+      {/* 4 Portas Conectoras Externas com bloqueio total de clique */}
+      {isSelected &&
+        [0, 1, 2, 3].map((portIdx) => {
+          const positions = [
+            { top: '-13px', left: '50%', transform: 'translateX(-50%)' },
+            { right: '-13px', top: '50%', transform: 'translateY(-50%)' },
+            { bottom: '-13px', left: '50%', transform: 'translateX(-50%)' },
+            { left: '-13px', top: '50%', transform: 'translateY(-50%)' }
+          ];
+          return (
+            <div
+              key={portIdx}
+              style={{
+                position: 'absolute',
+                ...positions[portIdx],
+                width: '26px',
+                height: '26px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'crosshair',
+                zIndex: 40
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation(); // Impede o balão de achar que está sendo arrastado
+                onPortMouseDown(e, node.id, portIdx);
+              }}
+              onMouseUp={(e) => {
+                e.stopPropagation();
+                onPortMouseUp(e, node.id, portIdx);
+              }}
+            >
+              <div
+                style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  backgroundColor: '#3B82F6',
+                  border: '1.5px solid #FFFFFF',
+                  boxShadow: '0 0 0 1px #2563EB',
+                  pointerEvents: 'none'
+                }}
+              />
+            </div>
+          );
+        })}
 
-      {/* Alça de Redimensionamento Manual (10x10px no canto inferior direito) */}
+      {/* Alça de Redimensionamento Manual */}
       {isSelected && (
         <div
-          onMouseDown={(e) => onResizeStart(e, node.id)}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            onResizeStart(e, node.id);
+          }}
           style={{
             position: 'absolute',
             right: '4px',
@@ -199,13 +205,13 @@ export default function MindNode({
             backgroundColor: '#2563EB',
             borderRadius: '2px',
             cursor: 'nwse-resize',
-            zIndex: 30
+            zIndex: 35
           }}
           title="Arrastar para redimensionar"
         />
       )}
 
-      {/* Imagem com Proporção Real e margem inferior de 8px a 10px */}
+      {/* Imagem */}
       {hasImage && (
         <img
           src={node.imageData}
@@ -222,7 +228,7 @@ export default function MindNode({
         />
       )}
 
-      {/* Edição de Texto In-Place (Sobreposta e Transparente) */}
+      {/* Editor de Texto In-Place */}
       {isEditing ? (
         <textarea
           ref={editorRef}
@@ -250,20 +256,19 @@ export default function MindNode({
           }}
         />
       ) : (
-        /* Texto Renderizado Estático */
         <div
           style={{
             width: '100%',
             fontSize: `${node.fontSize || 14}px`,
             textAlign: (node.textAlignment || 'left').toLowerCase(),
-            color: hasText ? (node.textColor || '#1E293B') : '#94A3B8',
+            color: hasText ? node.textColor || '#1E293B' : '#94A3B8',
             lineHeight: '1.4',
             wordBreak: 'break-word',
             whiteSpace: 'pre-wrap',
             minHeight: hasImage ? '0px' : '20px'
           }}
         >
-          {hasText ? editText : (hasImage ? '' : placeholder)}
+          {hasText ? editText : hasImage ? '' : placeholder}
         </div>
       )}
     </div>
