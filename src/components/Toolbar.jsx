@@ -57,7 +57,7 @@ export default function Toolbar({
 
   return (
     <>
-      {/* 1. BARRA SUPERIOR (HEADER) */}
+      {/* 1. BARRA SUPERIOR CLEAN (SISTEMA E NAVEGAÇÃO - PC E CELULAR) */}
       <header className="top-toolbar">
         {/* Meus Mapas */}
         <button className="btn-icon" title="Meus Mapas" onClick={onOpenMaps}>
@@ -86,101 +86,17 @@ export default function Toolbar({
           <Redo2 size={17} />
         </button>
 
-        {/* AÇÕES QUE APARECEM NO TOPO APENAS NO PC */}
-        <div className="desktop-only" style={{ alignItems: 'center', gap: '6px' }}>
-          <div className="divider" />
-          <button className="btn-icon" title="Novo Balão" onClick={onAddNode}>
-            <Plus size={18} />
-          </button>
-          <button className="btn-icon" title="Inserir Imagem" onClick={() => fileInputRef.current?.click()}>
-            <ImageIcon size={18} />
-          </button>
-          <button className="btn-icon" title="Encaixar na Tela (P)" onClick={onResetView}>
-            <Target size={18} />
-          </button>
-          <button 
-            className="btn-icon" 
-            title="Excluir Balão ou Conexão" 
-            disabled={!selectedNode}
-            onClick={onDeleteSelected}
-            style={{ color: selectedNode ? '#EF4444' : '#CBD5E1' }}
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
-
         <div className="divider" />
 
-        {/* Exportações */}
-        <button className="btn-icon" title="Exportar Imagem (JPG)" onClick={onExportImage}>
+        {/* Exportar Imagem (JPG) */}
+        <button className="btn-icon" title="Exportar Imagem (JPG em Alta Resolução)" onClick={onExportImage}>
           <FileImage size={18} />
         </button>
+
+        {/* Exportar Arquivo (JSON) */}
         <button className="btn-icon" title="Exportar Arquivo (JSON)" onClick={onExportFile}>
           <FileDown size={18} />
         </button>
-
-        {/* FORMATAÇÃO DIRETA NO TOPO (APENAS PC) */}
-        <div className="desktop-only" style={{ alignItems: 'center', gap: '6px' }}>
-          <div className="divider" />
-          <button 
-            className={`btn-icon ${selectedNode?.textAlignment === 'Left' ? 'active' : ''}`}
-            title="Alinhar à Esquerda" 
-            disabled={!isNodeActive}
-            onClick={() => onUpdateSelected({ align: 'Left' })}>
-            <AlignLeft size={16} />
-          </button>
-          <button 
-            className={`btn-icon ${selectedNode?.textAlignment === 'Center' ? 'active' : ''}`}
-            title="Centralizar Texto" 
-            disabled={!isNodeActive}
-            onClick={() => onUpdateSelected({ align: 'Center' })}>
-            <AlignCenter size={16} />
-          </button>
-          <button 
-            className={`btn-icon ${selectedNode?.textAlignment === 'Right' ? 'active' : ''}`}
-            title="Alinhar à Direita" 
-            disabled={!isNodeActive}
-            onClick={() => onUpdateSelected({ align: 'Right' })}>
-            <AlignRight size={16} />
-          </button>
-
-          <div className="divider" />
-          <button 
-            className="btn-icon" 
-            title="Aumentar Fonte (A+)" 
-            disabled={!isNodeActive}
-            onClick={() => onUpdateSelected({ fontSize: Math.min((selectedNode?.fontSize || 14) + 2, 36) })}>
-            <span style={{ fontWeight: 700, fontSize: '13px' }}>A+</span>
-          </button>
-          <button 
-            className="btn-icon" 
-            title="Diminuir Fonte (A-)" 
-            disabled={!isNodeActive}
-            onClick={() => onUpdateSelected({ fontSize: Math.max((selectedNode?.fontSize || 14) - 2, 10) })}>
-            <span style={{ fontWeight: 600, fontSize: '11px' }}>A-</span>
-          </button>
-
-          <div className="divider" />
-          {/* Paleta das 10 cores no Desktop */}
-          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-            {PASTEL_COLORS.map((color, idx) => (
-              <button
-                key={idx}
-                disabled={!isNodeActive}
-                onClick={() => onUpdateSelected({ color })}
-                style={{
-                  width: '18px',
-                  height: '18px',
-                  borderRadius: '50%',
-                  backgroundColor: color,
-                  border: selectedNode?.backgroundColor === color ? '2px solid #2563EB' : '1px solid #CBD5E1',
-                  cursor: isNodeActive ? 'pointer' : 'default',
-                  padding: 0
-                }}
-              />
-            ))}
-          </div>
-        </div>
 
         <div className="divider" />
 
@@ -219,57 +135,60 @@ export default function Toolbar({
         style={{ display: 'none' }} 
       />
 
-      {/* 2. BOTÕES FLUTUANTES RÁPIDOS NO CELULAR (Canto Inferior Direito) */}
-      <div className="mobile-fab-container">
+      {/* 2. BOTÕES FLUTUANTES (CANTO INFERIOR DIREITO - PC E CELULAR) */}
+      <div className="floating-action-container">
         <button 
           className="fab-btn secondary" 
-          title="Centralizar Mapa" 
+          title="Encaixar na Tela (Tecla P)" 
           onClick={onResetView}
         >
           <Target size={20} />
         </button>
         <button 
           className="fab-btn" 
-          title="Nova Ideia" 
+          title="Nova Ideia (+)" 
           onClick={onAddNode}
         >
           <Plus size={24} />
         </button>
       </div>
 
-      {/* 3. GAVETA CONTEXTUAL DE FORMATAÇÃO NO CELULAR (Aparece perto do polegar ao tocar num balão) */}
-      <div className={`mobile-format-drawer ${selectedNode ? 'active' : ''}`}>
+      {/* 3. GAVETA DE FORMATAÇÃO CONTEXTUAL (SURGE AO CLICAR EM UM BALÃO - PC E CELULAR) */}
+      <div className={`format-drawer ${selectedNode ? 'active' : ''}`}>
         {isNodeActive ? (
           <>
-            {/* Linha 1: Carrossel das 10 Cores Suaves */}
-            <div className="colors-carousel">
+            {/* Linha 1: As 10 Cores Suaves */}
+            <div className="colors-row">
               {PASTEL_COLORS.map((color, idx) => (
                 <button
                   key={idx}
                   onClick={() => onUpdateSelected({ color })}
                   style={{
-                    width: '26px',
-                    height: '26px',
+                    width: '24px',
+                    height: '24px',
                     borderRadius: '50%',
                     backgroundColor: color,
                     border: selectedNode?.backgroundColor === color ? '2px solid #2563EB' : '1px solid #CBD5E1',
                     flexShrink: 0,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    padding: 0
                   }}
                 />
               ))}
             </div>
 
-            {/* Linha 2: Tamanho da Fonte, Alinhamentos, Foto e Lixeira */}
+            {/* Linha 2: Tamanho da Fonte, Alinhamento, Imagem e Lixeira */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid #F1F5F9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                 <button 
                   className="btn-icon" 
+                  title="Aumentar Fonte (A+)"
                   onClick={() => onUpdateSelected({ fontSize: Math.min((selectedNode?.fontSize || 14) + 2, 36) })}>
                   <span style={{ fontWeight: 700, fontSize: '13px' }}>A+</span>
                 </button>
                 <button 
                   className="btn-icon" 
+                  title="Diminuir Fonte (A-)"
                   onClick={() => onUpdateSelected({ fontSize: Math.max((selectedNode?.fontSize || 14) - 2, 10) })}>
                   <span style={{ fontWeight: 600, fontSize: '11px' }}>A-</span>
                 </button>
@@ -280,36 +199,54 @@ export default function Toolbar({
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                 <button 
                   className={`btn-icon ${selectedNode?.textAlignment === 'Left' ? 'active' : ''}`}
+                  title="Alinhar à Esquerda"
                   onClick={() => onUpdateSelected({ align: 'Left' })}>
                   <AlignLeft size={16} />
                 </button>
                 <button 
                   className={`btn-icon ${selectedNode?.textAlignment === 'Center' ? 'active' : ''}`}
+                  title="Centralizar Texto"
                   onClick={() => onUpdateSelected({ align: 'Center' })}>
                   <AlignCenter size={16} />
                 </button>
                 <button 
                   className={`btn-icon ${selectedNode?.textAlignment === 'Right' ? 'active' : ''}`}
+                  title="Alinhar à Direita"
                   onClick={() => onUpdateSelected({ align: 'Right' })}>
                   <AlignRight size={16} />
+                </button>
+                <button 
+                  className={`btn-icon ${selectedNode?.textAlignment === 'Justify' ? 'active' : ''}`}
+                  title="Justificar Texto"
+                  onClick={() => onUpdateSelected({ align: 'Justify' })}>
+                  <AlignJustify size={16} />
                 </button>
               </div>
 
               <div className="divider" />
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <button className="btn-icon" onClick={() => fileInputRef.current?.click()} title="Inserir Imagem">
+                <button 
+                  className="btn-icon" 
+                  onClick={() => fileInputRef.current?.click()} 
+                  title="Inserir Imagem no Balão"
+                >
                   <ImageIcon size={17} />
                 </button>
-                <button className="btn-icon" onClick={onDeleteSelected} style={{ color: '#EF4444' }} title="Excluir Balão">
+                <button 
+                  className="btn-icon" 
+                  onClick={onDeleteSelected} 
+                  style={{ color: '#EF4444' }} 
+                  title="Excluir Balão (Delete)"
+                >
                   <Trash2 size={17} />
                 </button>
               </div>
             </div>
           </>
         ) : selectedNode?.isConnection ? (
-          /* Quando apenas uma linha de conexão estiver selecionada no celular */
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          /* Quando uma linha de conexão for selecionada */
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px' }}>
             <span style={{ fontSize: '12px', color: '#64748B' }}>Linha de conexão selecionada</span>
             <button className="btn-icon" onClick={onDeleteSelected} style={{ color: '#EF4444', gap: '4px' }}>
               <Trash2 size={16} /> <span style={{ fontSize: '12px', fontWeight: 600 }}>Excluir Linha</span>
