@@ -43,19 +43,43 @@ export default function App() {
     setProfile(data || null);
   };
 
-  // Centraliza o mapa na tela de acordo com os nós
-  const centerMapNodes = useCallback((nodes) => {
-    if (nodes && nodes.length > 0) {
-      const avgX = nodes.reduce((acc, n) => acc + (n.x + (n.width || 170) / 2), 0) / nodes.length;
-      const avgY = nodes.reduce((acc, n) => acc + (n.y + (n.height || 75) / 2), 0) / nodes.length;
-      setTransform({
-        x: window.innerWidth / 2 - avgX,
-        y: window.innerHeight / 2 - avgY,
-        scale: 1
-      });
-    } else {
+  // Encaixa 100% do mapa na tela calculando o tamanho real das ideias (Fit to Screen)
+  const fitContentToScreen = useCallback((nodes) => {
+    if (!nodes || nodes.length === 0) {
       setTransform({ x: 0, y: 0, scale: 1 });
+      return;
     }
+
+    const padding = 80;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+    nodes.forEach((n) => {
+      const w = n.width || 170;
+      const h = n.height || 75;
+      if (n.x < minX) minX = n.x;
+      if (n.x + w > maxX) maxX = n.x + w;
+      if (n.y < minY) minY = n.y;
+      if (n.y + h > maxY) maxY = n.y + h;
+    });
+
+    const contentW = Math.max(maxX - minX, 120);
+    const contentH = Math.max(maxY - minY, 80);
+
+    const availableW = window.innerWidth - padding * 2;
+    const availableH = window.innerHeight - padding * 2 - 60; // respiro para as barras
+
+    const scaleX = availableW / contentW;
+    const scaleY = availableH / contentH;
+    const optimalScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.25), 1.15);
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    setTransform({
+      x: window.innerWidth / 2 - centerX * optimalScale,
+      y: window.innerHeight / 2 - centerY * optimalScale,
+      scale: optimalScale
+    });
   }, []);
 
   const handleSelectMap = useCallback((map) => {
@@ -67,15 +91,13 @@ export default function App() {
     setActiveTabId(loadedTabs[0]?.id || 'tab-1');
     setSelectedNodeId(null);
 
-    // Inicializa o histórico de Desfazer
     setHistory([loadedTabs]);
     setHistoryIndex(0);
 
-    // Centraliza automaticamente ao abrir!
-    centerMapNodes(loadedTabs[0]?.nodes || []);
-  }, [centerMapNodes]);
+    // Encaixa o mapa completo na tela automaticamente ao abrir
+    fitContentToScreen(loadedTabs[0]?.nodes || []);
+  }, [fitContentToScreen]);
 
-  // Grava uma nova etapa no histórico
   const pushToHistory = useCallback((newTabs) => {
     setHistory((prev) => {
       const currentBranch = prev.slice(0, historyIndex + 1);
@@ -100,7 +122,7 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  // 1. Abre o mapa recente ou cria novo ao logar
+  // Carrega mapa recente ou cria novo
   const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -142,13 +164,7 @@ export default function App() {
 
         const { data: createdMap, error: createError } = await supabase
           .from('maps')
-          .insert([
-            {
-              user_id: userId,
-              title: 'Meu Primeiro Mapa',
-              data: newMapData
-            }
-          ])
+          .insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData }])
           .select()
           .single();
 
@@ -161,7 +177,7 @@ export default function App() {
     }
   }, [handleSelectMap]);
 
-  // 2. Monitoramento de Sessão
+  // Sessão e Login
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
@@ -189,7 +205,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
-  // 3. Logout por 1 hora de inatividade
+  // Logout por 1 hora de inatividade
   useEffect(() => {
     if (!user) return;
     const ONE_HOUR = 60 * 60 * 1000;
@@ -214,7 +230,7 @@ export default function App() {
     };
   }, [user]);
 
-  // 4. Auto-salvamento na nuvem
+  // Auto-salvamento na nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -239,11 +255,7 @@ export default function App() {
     });
   };
 
-  // Atalhos de teclado (P, Delete, Ctrl+C, Ctrl+V, Ctrl+Z, Ctrl+Y)
-  const handleResetView = useCallback(() => {
-    centerMapNodes(activeTab.nodes);
-  }, [centerMapNodes, activeTab.nodes]);
-
+  // Atalhos de Teclado (ESC, P, Delete, Ctrl+Z, Ctrl+Y, Ctrl+C, Ctrl+V)
   const handleDeleteSelected = useCallback(() => {
     if (!selectedNodeId) return;
     updateActiveTabData((t) => ({
@@ -261,7 +273,9 @@ export default function App() {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
       if (isInput) return;
 
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+      if (e.key === 'Escape') {
+        setSelectedNodeId(null); // Tecla ESC para desselecionar
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         if (e.shiftKey) handleRedo();
         else handleUndo();
@@ -269,7 +283,7 @@ export default function App() {
         e.preventDefault();
         handleRedo();
       } else if (e.key === 'p' || e.key === 'P') {
-        handleResetView();
+        fitContentToScreen(activeTab.nodes);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         handleDeleteSelected();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
@@ -290,9 +304,9 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleResetView, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, clipboardNode]);
+  }, [fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, clipboardNode]);
 
-  // Zoom
+  // Zoom centrado no mouse
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -304,7 +318,7 @@ export default function App() {
     setTransform({ x: newX, y: newY, scale: newScale });
   };
 
-  // Duplo clique no vazio: cria nó onde clicou
+  // Duplo clique no Canvas
   const handleDoubleClickCanvas = (e) => {
     if (e.target !== containerRef.current) return;
     const canvasX = (e.clientX - transform.x) / transform.scale;
@@ -355,100 +369,125 @@ export default function App() {
     }
   };
 
-  const handleMouseMove = (e) => {
-    if (isPanning) {
-      setTransform((prev) => ({
-        ...prev,
-        x: e.clientX - panStartRef.current.x,
-        y: e.clientY - panStartRef.current.y
-      }));
-    } else if (draggingNode) {
-      const dx = (e.clientX - draggingNode.startX) / transform.scale;
-      const dy = (e.clientY - draggingNode.startY) / transform.scale;
-      updateActiveTabData((t) => ({
-        ...t,
-        nodes: t.nodes.map((n) =>
-          n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n
-        )
-      }));
-    } else if (resizingNode) {
-      const dx = (e.clientX - resizingNode.startX) / transform.scale;
-      const dy = (e.clientY - resizingNode.startY) / transform.scale;
-      updateActiveTabData((t) => ({
-        ...t,
-        nodes: t.nodes.map((n) =>
-          n.id === resizingNode.id
-            ? {
-                ...n,
-                width: Math.max(120, resizingNode.origW + dx),
-                height: Math.max(60, resizingNode.origH + dy)
-              }
-            : n
-        )
-      }));
-    } else if (connecting) {
-      const canvasMouseX = (e.clientX - transform.x) / transform.scale;
-      const canvasMouseY = (e.clientY - transform.y) / transform.scale;
-      setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
+  // MONITORAMENTO GLOBAL DO MOUSE (Window): nunca perde o movimento nem a soltura do clique
+  useEffect(() => {
+    const onWindowMouseMove = (e) => {
+      if (isPanning) {
+        setTransform((prev) => ({
+          ...prev,
+          x: e.clientX - panStartRef.current.x,
+          y: e.clientY - panStartRef.current.y
+        }));
+      } else if (draggingNode) {
+        const dx = (e.clientX - draggingNode.startX) / transform.scale;
+        const dy = (e.clientY - draggingNode.startY) / transform.scale;
+        updateActiveTabData((t) => ({
+          ...t,
+          nodes: t.nodes.map((n) =>
+            n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n
+          )
+        }));
+      } else if (resizingNode) {
+        const dx = (e.clientX - resizingNode.startX) / transform.scale;
+        const dy = (e.clientY - resizingNode.startY) / transform.scale;
+        updateActiveTabData((t) => ({
+          ...t,
+          nodes: t.nodes.map((n) =>
+            n.id === resizingNode.id
+              ? {
+                  ...n,
+                  width: Math.max(120, resizingNode.origW + dx),
+                  height: Math.max(60, resizingNode.origH + dy)
+                }
+              : n
+          )
+        }));
+      } else if (connecting) {
+        const canvasMouseX = (e.clientX - transform.x) / transform.scale;
+        const canvasMouseY = (e.clientY - transform.y) / transform.scale;
+        setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
+      }
+    };
+
+    const onWindowMouseUp = () => {
+      if (draggingNode || resizingNode) {
+        pushToHistory(tabs);
+      }
+
+      // Soltou linha no vazio: cria nó com conexão inteligente apontando de frente
+      if (connecting && !connecting.connected) {
+        const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
+        if (fromNode) {
+          const parentCenterX = fromNode.x + (fromNode.width || 170) / 2;
+          const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
+          const dx = connecting.currentX - parentCenterX;
+          const dy = connecting.currentY - parentCenterY;
+
+          // Escolhe automaticamente a porta de entrada com base no ângulo de soltura
+          let bestToPort = 3;
+          if (Math.abs(dy) > Math.abs(dx)) {
+            bestToPort = dy > 0 ? 0 : 2; // se soltou abaixo, entra no Topo (0); se soltou acima, entra na Base (2)
+          } else {
+            bestToPort = dx > 0 ? 3 : 1; // se soltou à direita, entra na Esquerda (3); se à esquerda, entra na Direita (1)
+          }
+
+          const newNodeW = 170;
+          const newNodeH = 75;
+          const newNode = {
+            id: `node-${Date.now()}`,
+            x: connecting.currentX - newNodeW / 2,
+            y: connecting.currentY - newNodeH / 2,
+            width: newNodeW,
+            height: newNodeH,
+            text: '',
+            backgroundColor: '#FFFFFF',
+            textColor: '#1E293B',
+            fontSize: 14,
+            textAlignment: 'Left',
+            imageData: null
+          };
+
+          const newConn = {
+            id: `conn-${Date.now()}`,
+            fromNodeId: connecting.fromNodeId,
+            fromPortIndex: connecting.fromPortIndex,
+            toNodeId: newNode.id,
+            toPortIndex: bestToPort
+          };
+
+          const nextTabs = tabs.map((t) =>
+            t.id === activeTabId
+              ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] }
+              : t
+          );
+          setTabs(nextTabs);
+          pushToHistory(nextTabs);
+          setSelectedNodeId(newNode.id);
+        }
+      }
+
+      setIsPanning(false);
+      setDraggingNode(null);
+      setResizingNode(null);
+      setConnecting(null);
+    };
+
+    if (isPanning || draggingNode || resizingNode || connecting) {
+      window.addEventListener('mousemove', onWindowMouseMove);
+      window.addEventListener('mouseup', onWindowMouseUp);
     }
-  };
 
-  const handleMouseUp = () => {
-    if (draggingNode || resizingNode) {
-      pushToHistory(tabs);
-    }
-
-    // Soltar linha no vazio: cria nó conectado com direção de porta inteligente
-    if (connecting && !connecting.connected) {
-      const newNodeW = 170;
-      const newNodeH = 75;
-      const newNode = {
-        id: `node-${Date.now()}`,
-        x: connecting.currentX - newNodeW / 2,
-        y: connecting.currentY - newNodeH / 2,
-        width: newNodeW,
-        height: newNodeH,
-        text: '',
-        backgroundColor: '#FFFFFF',
-        textColor: '#1E293B',
-        fontSize: 14,
-        textAlignment: 'Left',
-        imageData: null
-      };
-
-      // Porta de entrada correta: se saiu da esquerda (3), entra na direita (1) do filho!
-      let bestToPort = 3;
-      if (connecting.fromPortIndex === 3) bestToPort = 1;
-      else if (connecting.fromPortIndex === 1) bestToPort = 3;
-      else if (connecting.fromPortIndex === 0) bestToPort = 2;
-      else if (connecting.fromPortIndex === 2) bestToPort = 0;
-
-      const newConn = {
-        id: `conn-${Date.now()}`,
-        fromNodeId: connecting.fromNodeId,
-        fromPortIndex: connecting.fromPortIndex,
-        toNodeId: newNode.id,
-        toPortIndex: bestToPort
-      };
-
-      const nextTabs = tabs.map((t) =>
-        t.id === activeTabId
-          ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] }
-          : t
-      );
-      setTabs(nextTabs);
-      pushToHistory(nextTabs);
-      setSelectedNodeId(newNode.id);
-    }
-
-    setIsPanning(false);
-    setDraggingNode(null);
-    setResizingNode(null);
-    setConnecting(null);
-  };
+    return () => {
+      window.removeEventListener('mousemove', onWindowMouseMove);
+      window.removeEventListener('mouseup', onWindowMouseUp);
+    };
+  }, [isPanning, draggingNode, resizingNode, connecting, transform, tabs, activeTab, activeTabId, pushToHistory]);
 
   const handlePortMouseDown = (e, nodeId, portIndex) => {
-    e.stopPropagation();
+    // Cancela qualquer arraste de balão ao tocar na porta
+    setDraggingNode(null);
+    setResizingNode(null);
+
     const node = activeTab.nodes.find((n) => n.id === nodeId);
     const pos = getPortPosition(node, portIndex);
     setConnecting({
@@ -461,7 +500,6 @@ export default function App() {
   };
 
   const handlePortMouseUp = (e, toNodeId, toPortIndex) => {
-    e.stopPropagation();
     if (connecting && connecting.fromNodeId !== toNodeId) {
       const alreadyExists = activeTab.connections.some(
         (c) =>
@@ -503,8 +541,6 @@ export default function App() {
       className={`canvas-container ${isPanning ? 'panning' : ''}`}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
       onDoubleClick={handleDoubleClickCanvas}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -535,7 +571,7 @@ export default function App() {
           }), true);
         }}
         onDeleteSelected={handleDeleteSelected}
-        onResetView={handleResetView}
+        onResetView={() => fitContentToScreen(activeTab.nodes)}
         onOpenMaps={() => setIsMapsOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
         isAdmin={profile?.role === 'admin'}
@@ -549,7 +585,7 @@ export default function App() {
         canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG Infinito com Orientação de Seta Perfeita e Sem Cortes */}
+      {/* SVG Infinito com Setas Direcionais */}
       <svg
         style={{
           position: 'absolute',
@@ -608,7 +644,7 @@ export default function App() {
         </g>
       </svg>
 
-      {/* Camada Infinita dos Balões com Transparência de Cliques */}
+      {/* Camada Infinita dos Balões */}
       <div
         style={{
           position: 'absolute',
@@ -626,7 +662,6 @@ export default function App() {
               isSelected={selectedNodeId === node.id}
               isRoot={index === 0}
               onSelect={(e, id) => {
-                e.stopPropagation();
                 setSelectedNodeId(id);
               }}
               onStartDrag={(e, id) => {
@@ -641,7 +676,6 @@ export default function App() {
               onPortMouseDown={handlePortMouseDown}
               onPortMouseUp={handlePortMouseUp}
               onResizeStart={(e, id) => {
-                e.stopPropagation();
                 setResizingNode({
                   id,
                   startX: e.clientX,
