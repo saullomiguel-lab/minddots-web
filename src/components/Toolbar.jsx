@@ -1,7 +1,6 @@
 import React, { useRef } from 'react';
 import { 
   Plus, 
-  Download, 
   Image as ImageIcon, 
   AlignLeft, 
   AlignCenter, 
@@ -15,13 +14,16 @@ import {
   LogOut,
   Cloud,
   Undo2,
-  Redo2
+  Redo2,
+  FileImage,
+  FileDown
 } from 'lucide-react';
 import { PASTEL_COLORS } from '../constants';
 
 export default function Toolbar({ 
   onAddNode, 
-  onExport, 
+  onExportImage,
+  onExportFile,
   onAddImage, 
   selectedNode, 
   onUpdateSelected,
@@ -60,7 +62,7 @@ export default function Toolbar({
 
       <div className="divider" />
 
-      {/* Botões Desfazer e Refazer (tipo Word) */}
+      {/* Botões Desfazer e Refazer */}
       <button 
         className="btn-icon" 
         title="Desfazer (Ctrl + Z)" 
@@ -87,7 +89,7 @@ export default function Toolbar({
         <Plus size={18} />
       </button>
 
-      {/* Inserir Imagem */}
+      {/* Inserir Imagem no Balão Selecionado */}
       <button className="btn-icon" title="Inserir Imagem" onClick={() => fileInputRef.current?.click()}>
         <ImageIcon size={18} />
       </button>
@@ -99,15 +101,15 @@ export default function Toolbar({
         style={{ display: 'none' }} 
       />
 
-      {/* Centralizar Mapa (Tecla P) */}
-      <button className="btn-icon" title="Centralizar Mapa (Tecla P)" onClick={onResetView}>
+      {/* Centralizar e Encaixar Mapa (Tecla P) */}
+      <button className="btn-icon" title="Encaixar Mapa na Tela (Tecla P)" onClick={onResetView}>
         <Target size={18} />
       </button>
 
-      {/* Excluir Nó Selecionado */}
+      {/* Excluir Nó ou Conexão Selecionada */}
       <button 
         className="btn-icon" 
-        title="Excluir Balão (Tecla Delete)" 
+        title="Excluir Balão ou Conexão (Tecla Delete)" 
         disabled={!selectedNode}
         onClick={onDeleteSelected}
         style={{ color: selectedNode ? '#EF4444' : '#CBD5E1' }}
@@ -115,9 +117,24 @@ export default function Toolbar({
         <Trash2 size={18} />
       </button>
 
-      {/* Exportar */}
-      <button className="btn-icon" title="Exportar Mapa (JSON)" onClick={onExport}>
-        <Download size={18} />
+      <div className="divider" />
+
+      {/* 1. Exportar Imagem (JPG em Alta Resolução com Salvar Como) */}
+      <button 
+        className="btn-icon" 
+        title="Exportar Imagem do Mapa (JPG em Alta Resolução)" 
+        onClick={onExportImage}
+      >
+        <FileImage size={18} />
+      </button>
+
+      {/* 2. Exportar Arquivo (JSON com Salvar Como) */}
+      <button 
+        className="btn-icon" 
+        title="Exportar Arquivo do Mapa (JSON)" 
+        onClick={onExportFile}
+      >
+        <FileDown size={18} />
       </button>
 
       <div className="divider" />
@@ -126,28 +143,28 @@ export default function Toolbar({
       <button 
         className={`btn-icon ${selectedNode?.textAlignment === 'Left' ? 'active' : ''}`}
         title="Alinhar à Esquerda" 
-        disabled={!selectedNode}
+        disabled={!selectedNode || selectedNode.isConnection}
         onClick={() => onUpdateSelected({ align: 'Left' })}>
         <AlignLeft size={16} />
       </button>
       <button 
         className={`btn-icon ${selectedNode?.textAlignment === 'Center' ? 'active' : ''}`}
         title="Centralizar Texto" 
-        disabled={!selectedNode}
+        disabled={!selectedNode || selectedNode.isConnection}
         onClick={() => onUpdateSelected({ align: 'Center' })}>
         <AlignCenter size={16} />
       </button>
       <button 
         className={`btn-icon ${selectedNode?.textAlignment === 'Right' ? 'active' : ''}`}
         title="Alinhar à Direita" 
-        disabled={!selectedNode}
+        disabled={!selectedNode || selectedNode.isConnection}
         onClick={() => onUpdateSelected({ align: 'Right' })}>
         <AlignRight size={16} />
       </button>
       <button 
         className={`btn-icon ${selectedNode?.textAlignment === 'Justify' ? 'active' : ''}`}
         title="Justificar Texto" 
-        disabled={!selectedNode}
+        disabled={!selectedNode || selectedNode.isConnection}
         onClick={() => onUpdateSelected({ align: 'Justify' })}>
         <AlignJustify size={16} />
       </button>
@@ -158,26 +175,26 @@ export default function Toolbar({
       <button 
         className="btn-icon" 
         title="Aumentar Fonte (A+)" 
-        disabled={!selectedNode}
+        disabled={!selectedNode || selectedNode.isConnection}
         onClick={() => onUpdateSelected({ fontSize: Math.min((selectedNode?.fontSize || 14) + 2, 36) })}>
         <span style={{ fontWeight: 700, fontSize: '13px' }}>A+</span>
       </button>
       <button 
         className="btn-icon" 
         title="Diminuir Fonte (A-)" 
-        disabled={!selectedNode}
+        disabled={!selectedNode || selectedNode.isConnection}
         onClick={() => onUpdateSelected({ fontSize: Math.max((selectedNode?.fontSize || 14) - 2, 10) })}>
         <span style={{ fontWeight: 600, fontSize: '11px' }}>A-</span>
       </button>
 
       <div className="divider" />
 
-      {/* Paleta rápida de 10 cores suaves */}
+      {/* Paleta de 10 cores suaves */}
       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
         {PASTEL_COLORS.map((color, idx) => (
           <button
             key={idx}
-            disabled={!selectedNode}
+            disabled={!selectedNode || selectedNode.isConnection}
             onClick={() => onUpdateSelected({ color })}
             style={{
               width: '18px',
@@ -185,7 +202,7 @@ export default function Toolbar({
               borderRadius: '50%',
               backgroundColor: color,
               border: selectedNode?.backgroundColor === color ? '2px solid #2563EB' : '1px solid #CBD5E1',
-              cursor: selectedNode ? 'pointer' : 'default',
+              cursor: selectedNode && !selectedNode.isConnection ? 'pointer' : 'default',
               padding: 0
             }}
           />
@@ -199,20 +216,20 @@ export default function Toolbar({
         <Cloud size={16} />
       </span>
 
-      {/* Painel do Administrador (só visível para Admin) */}
+      {/* Painel do Administrador */}
       {isAdmin && (
-        <button className="btn-icon" title="Painel do Administrador" onClick={onOpenAdmin} style={{ color: '#3B82F6' }}>
+        <button className="btn-icon" title="Painel do Administrador" onClick={onOpenAdmin} style={{ color: '#2563EB' }}>
           <Shield size={18} />
         </button>
       )}
 
-      {/* Botão Entrar ou Sair */}
+      {/* Entrar ou Sair */}
       {user ? (
         <button className="btn-icon" title="Sair da Conta" onClick={onLogout}>
           <LogOut size={16} />
         </button>
       ) : (
-        <button className="btn-icon" title="Entrar / Cadastrar" onClick={onOpenAuth} style={{ color: '#3B82F6' }}>
+        <button className="btn-icon" title="Entrar / Cadastrar" onClick={onOpenAuth} style={{ color: '#2563EB' }}>
           <LogIn size={16} />
         </button>
       )}
