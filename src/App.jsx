@@ -7,7 +7,7 @@ import ForcePasswordChangeModal from './components/ForcePasswordChangeModal';
 import AdminPanel from './components/AdminPanel';
 import MapsManagerModal from './components/MapsManagerModal';
 import TeamPanel from './components/TeamPanel';
-import { getPortPosition, getBezierPath } from './constants';
+import { getPortPosition, getBezierPath, getBezierControlPoints } from './constants';
 import { exportMapToJpg, saveFileWithPicker } from './utils/exportHelper';
 import { supabase } from './supabaseClient';
 
@@ -27,27 +27,19 @@ export default function App() {
   const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [clipboardNode, setClipboardNode] = useState(null);
 
-  // Histórico Blindado
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  // Pan & Zoom
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Controle de Gestos no Celular
-  const touchStateRef = useRef({
-    isTracking: false,
-    lastX: 0,
-    lastY: 0,
-    startDist: 0,
-    startScale: 1
-  });
+  const touchStateRef = useRef({ isTracking: false, lastX: 0, lastY: 0, startDist: 0, startScale: 1 });
 
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
   const [connecting, setConnecting] = useState(null);
+  const [draggingCP, setDraggingCP] = useState(null); // ESTADO PARA ARRASTAR A CURVATURA DA SETA
   const containerRef = useRef(null);
 
   const loadUserProfile = async (userId) => {
@@ -56,56 +48,28 @@ export default function App() {
   };
 
   const fitContentToScreen = useCallback((nodes) => {
-    if (!nodes || nodes.length === 0) {
-      setTransform({ x: 0, y: 0, scale: 1 });
-      return;
-    }
-
+    if (!nodes || nodes.length === 0) { setTransform({ x: 0, y: 0, scale: 1 }); return; }
     const padding = 70;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-
     nodes.forEach((n) => {
-      const w = n.width || 170;
-      const h = n.height || 75;
-      if (n.x < minX) minX = n.x;
-      if (n.x + w > maxX) maxX = n.x + w;
-      if (n.y < minY) minY = n.y;
-      if (n.y + h > maxY) maxY = n.y + h;
+      const w = n.width || 170; const h = n.height || 75;
+      if (n.x < minX) minX = n.x; if (n.x + w > maxX) maxX = n.x + w;
+      if (n.y < minY) minY = n.y; if (n.y + h > maxY) maxY = n.y + h;
     });
-
-    const contentW = Math.max(maxX - minX, 120);
-    const contentH = Math.max(maxY - minY, 80);
-
-    const availableW = window.innerWidth - padding * 2;
-    const availableH = window.innerHeight - padding * 2 - 60;
-
-    const scaleX = availableW / contentW;
-    const scaleY = availableH / contentH;
+    const contentW = Math.max(maxX - minX, 120); const contentH = Math.max(maxY - minY, 80);
+    const availableW = window.innerWidth - padding * 2; const availableH = window.innerHeight - padding * 2 - 60;
+    const scaleX = availableW / contentW; const scaleY = availableH / contentH;
     const optimalScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.25), 1.15);
-
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-
-    setTransform({
-      x: window.innerWidth / 2 - centerX * optimalScale,
-      y: window.innerHeight / 2 - centerY * optimalScale,
-      scale: optimalScale
-    });
+    const centerX = (minX + maxX) / 2; const centerY = (minY + maxY) / 2;
+    setTransform({ x: window.innerWidth / 2 - centerX * optimalScale, y: window.innerHeight / 2 - centerY * optimalScale, scale: optimalScale });
   }, []);
 
   const handleSelectMap = useCallback((map) => {
     setCurrentMap(map);
-    const loadedTabs = map.data?.tabs || [
-      { id: 'tab-1', title: 'Mapa 1', nodes: [], connections: [] }
-    ];
-    setTabs(loadedTabs);
-    setActiveTabId(loadedTabs[0]?.id || 'tab-1');
-    setSelectedNodeId(null);
-    setSelectedConnectionId(null);
-
-    setHistory([JSON.parse(JSON.stringify(loadedTabs))]);
-    setHistoryIndex(0);
-
+    const loadedTabs = map.data?.tabs || [{ id: 'tab-1', title: 'Mapa 1', nodes: [], connections: [] }];
+    setTabs(loadedTabs); setActiveTabId(loadedTabs[0]?.id || 'tab-1');
+    setSelectedNodeId(null); setSelectedConnectionId(null);
+    setHistory([JSON.parse(JSON.stringify(loadedTabs))]); setHistoryIndex(0);
     fitContentToScreen(loadedTabs[0]?.nodes || []);
   }, [fitContentToScreen]);
 
@@ -120,111 +84,39 @@ export default function App() {
 
   const handleUndo = useCallback(() => {
     if (historyIndex > 0 && history[historyIndex - 1]) {
-      const newIdx = historyIndex - 1;
-      const restored = JSON.parse(JSON.stringify(history[newIdx]));
-      setTabs(restored);
-      setHistoryIndex(newIdx);
-      setSelectedNodeId(null);
-      setSelectedConnectionId(null);
+      const newIdx = historyIndex - 1; setTabs(JSON.parse(JSON.stringify(history[newIdx]))); setHistoryIndex(newIdx);
+      setSelectedNodeId(null); setSelectedConnectionId(null);
     }
   }, [history, historyIndex]);
 
   const handleRedo = useCallback(() => {
     if (historyIndex < history.length - 1 && history[historyIndex + 1]) {
-      const newIdx = historyIndex + 1;
-      const restored = JSON.parse(JSON.stringify(history[newIdx]));
-      setTabs(restored);
-      setHistoryIndex(newIdx);
-      setSelectedNodeId(null);
-      setSelectedConnectionId(null);
+      const newIdx = historyIndex + 1; setTabs(JSON.parse(JSON.stringify(history[newIdx]))); setHistoryIndex(newIdx);
+      setSelectedNodeId(null); setSelectedConnectionId(null);
     }
   }, [history, historyIndex]);
 
-  const loadRecentOrCreateMap = useCallback(async (userId, profileData) => {
+  const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
-      const { data, error } = await supabase
-        .from('maps')
-        .select('*')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false })
-        .limit(1);
-
+      const { data, error } = await supabase.from('maps').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1);
       if (error) throw error;
-
-      if (data && data.length > 0) {
-        handleSelectMap(data[0]);
-      } else {
-        const newMapData = {
-          tabs: [
-            {
-              id: `tab-${Date.now()}`,
-              title: 'Mapa 1',
-              nodes: [
-                {
-                  id: `node-${Date.now()}`,
-                  x: 350,
-                  y: 220,
-                  width: 170,
-                  height: 75,
-                  text: '',
-                  backgroundColor: '#FFFFFF',
-                  textColor: '#1E293B',
-                  fontSize: 16,
-                  textAlignment: 'Center',
-                  imageData: null
-                }
-              ],
-              connections: []
-            }
-          ]
-        };
-
-        const { data: createdMap, error: createError } = await supabase
-          .from('maps')
-          .insert([{ 
-            user_id: userId, 
-            title: 'Meu Primeiro Mapa', 
-            data: newMapData,
-            team_id: profileData?.team_id || null
-          }])
-          .select()
-          .single();
-
-        if (!createError && createdMap) {
-          handleSelectMap(createdMap);
-        }
+      if (data && data.length > 0) { handleSelectMap(data[0]); } else {
+        const newMapData = { tabs: [{ id: `tab-${Date.now()}`, title: 'Mapa 1', nodes: [{ id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 16, textAlignment: 'Center', imageData: null }], connections: [] }] };
+        const { data: createdMap, error: createError } = await supabase.from('maps').insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData }]).select().single();
+        if (!createError && createdMap) { handleSelectMap(createdMap); }
       }
-    } catch (err) {
-      console.error('Erro ao carregar mapa recente:', err);
-    }
+    } catch (err) { console.error('Erro ao carregar mapa recente:', err); }
   }, [handleSelectMap]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
-      if (session?.user) {
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        setProfile(p || null);
-        loadRecentOrCreateMap(session.user.id, p);
-      } else {
-        setIsAuthOpen(true);
-      }
+      if (session?.user) { loadUserProfile(session.user.id); loadRecentOrCreateMap(session.user.id); } else { setIsAuthOpen(true); }
     });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
-      if (session?.user) {
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        setProfile(p || null);
-        loadRecentOrCreateMap(session.user.id, p);
-      } else {
-        setProfile(null);
-        setCurrentMap(null);
-        setTabs([]);
-        setIsAuthOpen(true);
-      }
+      if (session?.user) { loadUserProfile(session.user.id); loadRecentOrCreateMap(session.user.id); } else { setProfile(null); setCurrentMap(null); setTabs([]); setIsAuthOpen(true); }
     });
-
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
@@ -232,38 +124,21 @@ export default function App() {
     if (!user) return;
     const ONE_HOUR = 60 * 60 * 1000;
     let inactivityTimer;
-
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(async () => {
-        alert('Sua sessão expirou por inatividade (1 hora sem uso). Por favor, entre novamente.');
-        await supabase.auth.signOut();
-      }, ONE_HOUR);
+      inactivityTimer = setTimeout(async () => { alert('Sua sessão expirou por inatividade (1 hora sem uso). Por favor, entre novamente.'); await supabase.auth.signOut(); }, ONE_HOUR);
     };
-
     const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
     events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
-
     resetTimer();
-
-    return () => {
-      clearTimeout(inactivityTimer);
-      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
-    };
+    return () => { clearTimeout(inactivityTimer); events.forEach((eventName) => window.removeEventListener(eventName, resetTimer)); };
   }, [user]);
 
-  // Auto-salvamento na Nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
-      setIsSaving(true);
-      await supabase
-        .from('maps')
-        .update({ data: { tabs }, updated_at: new Date().toISOString() })
-        .eq('id', currentMap.id);
-      setIsSaving(false);
+      setIsSaving(true); await supabase.from('maps').update({ data: { tabs }, updated_at: new Date().toISOString() }).eq('id', currentMap.id); setIsSaving(false);
     }, 1200);
-
     return () => clearTimeout(saveTimer);
   }, [tabs, currentMap, user]);
 
@@ -273,80 +148,47 @@ export default function App() {
   const updateActiveTabData = (updater, recordHistory = false) => {
     const nextTabs = safeTabs.map((t) => (t.id === activeTabId ? updater(t) : t));
     setTabs(nextTabs);
-    if (recordHistory) {
-      pushToHistory(nextTabs);
-    }
+    if (recordHistory) pushToHistory(nextTabs);
   };
 
   const handleHeightSync = (nodeId, actualHeight) => {
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === activeTabId
-          ? { ...t, nodes: t.nodes.map((n) => (n.id === nodeId ? { ...n, height: actualHeight } : n)) }
-          : t
-      )
-    );
+    setTabs((prev) => prev.map((t) => t.id === activeTabId ? { ...t, nodes: t.nodes.map((n) => (n.id === nodeId ? { ...n, height: actualHeight } : n)) } : t));
   };
 
-  // Colar com Ctrl + V
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
       if (isInput) return;
-
-      const clipboardData = e.clipboardData;
-      if (!clipboardData) return;
-
+      const clipboardData = e.clipboardData; if (!clipboardData) return;
       let foundImageFile = null;
       if (clipboardData.files && clipboardData.files.length > 0) {
-        for (let i = 0; i < clipboardData.files.length; i++) {
-          if (clipboardData.files[i].type.startsWith('image/')) { foundImageFile = clipboardData.files[i]; break; }
-        }
+        for (let i = 0; i < clipboardData.files.length; i++) { if (clipboardData.files[i].type.startsWith('image/')) { foundImageFile = clipboardData.files[i]; break; } }
       }
       if (!foundImageFile && clipboardData.items) {
-        for (let i = 0; i < clipboardData.items.length; i++) {
-          if (clipboardData.items[i].type.startsWith('image/')) { foundImageFile = clipboardData.items[i].getAsFile(); break; }
-        }
+        for (let i = 0; i < clipboardData.items.length; i++) { if (clipboardData.items[i].type.startsWith('image/')) { foundImageFile = clipboardData.items[i].getAsFile(); break; } }
       }
       let htmlImgSrc = null;
       if (!foundImageFile) {
         const html = clipboardData.getData('text/html');
-        if (html) {
-          const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-          if (match && match[1]) htmlImgSrc = match[1];
-        }
+        if (html) { const match = html.match(/<img[^>]+src=["']([^"']+)["']/i); if (match && match[1]) htmlImgSrc = match[1]; }
       }
       const plainText = clipboardData.getData('text/plain') || '';
       let isImageUrl = false;
-      if (!foundImageFile && !htmlImgSrc && plainText) {
-        isImageUrl = /^https?:\/\/.*\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(plainText.trim()) || plainText.trim().startsWith('data:image/');
-      }
+      if (!foundImageFile && !htmlImgSrc && plainText) { isImageUrl = /^https?:\/\/.*\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(plainText.trim()) || plainText.trim().startsWith('data:image/'); }
 
       const createBalloonWithImage = (imgSrc) => {
         e.preventDefault();
-        const newNode = {
-          id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 100, y: -transform.y + window.innerHeight / 2 - 80,
-          width: 200, height: 120, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B',
-          fontSize: 14, textAlignment: 'Center', imageData: imgSrc
-        };
+        const newNode = { id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 100, y: -transform.y + window.innerHeight / 2 - 80, width: 200, height: 120, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Center', imageData: imgSrc };
         updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
         setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
       };
 
-      if (foundImageFile) {
-        const reader = new FileReader();
-        reader.onload = (evt) => createBalloonWithImage(evt.target.result);
-        reader.readAsDataURL(foundImageFile); return;
-      }
+      if (foundImageFile) { const reader = new FileReader(); reader.onload = (evt) => createBalloonWithImage(evt.target.result); reader.readAsDataURL(foundImageFile); return; }
       if (htmlImgSrc) return createBalloonWithImage(htmlImgSrc);
       if (isImageUrl) return createBalloonWithImage(plainText.trim());
-
       if (plainText && plainText.trim()) {
         e.preventDefault();
-        const newNode = {
-          id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 85, y: -transform.y + window.innerHeight / 2 - 37,
-          width: 170, height: 75, text: plainText.trim(), backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null
-        };
+        const newNode = { id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 85, y: -transform.y + window.innerHeight / 2 - 37, width: 170, height: 75, text: plainText.trim(), backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null };
         updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
         setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
       }
@@ -361,10 +203,7 @@ export default function App() {
       setSelectedConnectionId(null); return;
     }
     if (selectedNodeId) {
-      updateActiveTabData((t) => ({
-        ...t, nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
-        connections: t.connections.filter((c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId)
-      }), true);
+      updateActiveTabData((t) => ({ ...t, nodes: t.nodes.filter((n) => n.id !== selectedNodeId), connections: t.connections.filter((c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId) }), true);
       setSelectedNodeId(null);
     }
   }, [selectedConnectionId, selectedNodeId, safeTabs, activeTabId]);
@@ -373,9 +212,10 @@ export default function App() {
     const handleKeyDown = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
       if (isInput) return;
+
       if (e.key === 'Escape') {
         if (connecting) setConnecting(null);
-        setSelectedNodeId(null); setSelectedConnectionId(null); setIsPanning(false); setDraggingNode(null); setResizingNode(null);
+        setSelectedNodeId(null); setSelectedConnectionId(null); setIsPanning(false); setDraggingNode(null); setResizingNode(null); setDraggingCP(null);
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault(); if (e.shiftKey) handleRedo(); else handleUndo();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
@@ -406,8 +246,7 @@ export default function App() {
   const handleTouchStart = (e) => {
     if (e.touches.length === 1 && e.target === containerRef.current) {
       touchStateRef.current.isTracking = true;
-      touchStateRef.current.lastX = e.touches[0].clientX;
-      touchStateRef.current.lastY = e.touches[0].clientY;
+      touchStateRef.current.lastX = e.touches[0].clientX; touchStateRef.current.lastY = e.touches[0].clientY;
       setSelectedNodeId(null); setSelectedConnectionId(null);
     } else if (e.touches.length === 2) {
       touchStateRef.current.isTracking = false;
@@ -418,19 +257,16 @@ export default function App() {
 
   const handleTouchMove = (e) => {
     if (e.touches.length === 1 && touchStateRef.current.isTracking) {
-      const dx = e.touches[0].clientX - touchStateRef.current.lastX;
-      const dy = e.touches[0].clientY - touchStateRef.current.lastY;
+      const dx = e.touches[0].clientX - touchStateRef.current.lastX; const dy = e.touches[0].clientY - touchStateRef.current.lastY;
       touchStateRef.current.lastX = e.touches[0].clientX; touchStateRef.current.lastY = e.touches[0].clientY;
       setTransform((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
     } else if (e.touches.length === 2 && touchStateRef.current.startDist > 0) {
       const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
       const factor = dist / touchStateRef.current.startDist;
       const newScale = Math.min(Math.max(touchStateRef.current.startScale * factor, 0.25), 3);
-      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2; const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       setTransform((prev) => {
-        const newX = midX - (midX - prev.x) * (newScale / prev.scale);
-        const newY = midY - (midY - prev.y) * (newScale / prev.scale);
+        const newX = midX - (midX - prev.x) * (newScale / prev.scale); const newY = midY - (midY - prev.y) * (newScale / prev.scale);
         return { x: newX, y: newY, scale: newScale };
       });
     }
@@ -440,8 +276,7 @@ export default function App() {
 
   const handleDoubleClickCanvas = (e) => {
     if (e.target !== containerRef.current) return;
-    const canvasX = (e.clientX - transform.x) / transform.scale;
-    const canvasY = (e.clientY - transform.y) / transform.scale;
+    const canvasX = (e.clientX - transform.x) / transform.scale; const canvasY = (e.clientY - transform.y) / transform.scale;
     const newNode = { id: `node-${Date.now()}`, x: canvasX - 85, y: canvasY - 37, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null };
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
@@ -462,16 +297,32 @@ export default function App() {
 
   const handleStartReanchor = (e, conn, end) => {
     if (e.stopPropagation) e.stopPropagation();
-    setDraggingNode(null); setResizingNode(null);
+    setDraggingNode(null); setResizingNode(null); setDraggingCP(null);
     const canvasMouseX = (e.clientX - transform.x) / transform.scale; const canvasMouseY = (e.clientY - transform.y) / transform.scale;
     if (end === 'to') setConnecting({ fromNodeId: conn.fromNodeId, fromPortIndex: conn.fromPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'to' });
     else setConnecting({ targetNodeId: conn.toNodeId, targetPortIndex: conn.toPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'from' });
   };
 
+  // INÍCIO: ARRASTO DOS PONTOS DE CONTROLE DA CURVATURA (BOLINHAS BRANCAS)
+  const handleStartDragCP = (e, conn, cpIndex) => {
+    if (e.stopPropagation) e.stopPropagation();
+    setDraggingNode(null); setResizingNode(null); setConnecting(null);
+    setDraggingCP({ connId: conn.id, cpIndex });
+  };
+
+  const handleResetCurve = (e, connId) => {
+    if (e.stopPropagation) e.stopPropagation();
+    updateActiveTabData((t) => ({
+      ...t,
+      connections: t.connections.map((c) => c.id === connId ? { ...c, cp1Offset: null, cp2Offset: null } : c)
+    }), true);
+  };
+
   useEffect(() => {
     const onPointerMove = (clientX, clientY) => {
-      if (isPanning) { setTransform((prev) => ({ ...prev, x: clientX - panStartRef.current.x, y: clientY - panStartRef.current.y })); }
-      else if (draggingNode) {
+      if (isPanning) {
+        setTransform((prev) => ({ ...prev, x: clientX - panStartRef.current.x, y: clientY - panStartRef.current.y }));
+      } else if (draggingNode) {
         const dx = (clientX - draggingNode.startX) / transform.scale; const dy = (clientY - draggingNode.startY) / transform.scale;
         updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n) }));
       } else if (resizingNode) {
@@ -485,11 +336,48 @@ export default function App() {
       } else if (connecting) {
         const canvasMouseX = (clientX - transform.x) / transform.scale; const canvasMouseY = (clientY - transform.y) / transform.scale;
         setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
+      } else if (draggingCP) {
+        // ATUALIZA A CURVATURA EM TEMPO REAL AO ARRASTAR A BOLINHA
+        const canvasMouseX = (clientX - transform.x) / transform.scale;
+        const canvasMouseY = (clientY - transform.y) / transform.scale;
+
+        updateActiveTabData((t) => ({
+          ...t,
+          connections: t.connections.map((c) => {
+            if (c.id !== draggingCP.connId) return c;
+            const fromNode = t.nodes.find((n) => n.id === c.fromNodeId);
+            const toNode = t.nodes.find((n) => n.id === c.toNodeId);
+            if (!fromNode || !toNode) return c;
+
+            const p1 = getPortPosition(fromNode, c.fromPortIndex);
+            const p2 = getPortPosition(toNode, c.toPortIndex);
+
+            let cp1Off = c.cp1Offset;
+            let cp2Off = c.cp2Offset;
+
+            // Se for o primeiro arraste, salva os offsets auto como ponto de partida
+            if (!cp1Off || !cp2Off) {
+              const autoCps = getBezierControlPoints(p1, p2);
+              cp1Off = { dx: autoCps.cp1.x - p1.x, dy: autoCps.cp1.y - p1.y };
+              cp2Off = { dx: autoCps.cp2.x - p2.x, dy: autoCps.cp2.y - p2.y };
+            }
+
+            if (draggingCP.cpIndex === 1) {
+              cp1Off = { dx: canvasMouseX - p1.x, dy: canvasMouseY - p1.y };
+            } else {
+              cp2Off = { dx: canvasMouseX - p2.x, dy: canvasMouseY - p2.y };
+            }
+            return { ...c, cp1Offset: cp1Off, cp2Offset: cp2Off };
+          })
+        }));
       }
     };
 
     const onPointerUp = () => {
-      if (draggingNode || resizingNode) pushToHistory(safeTabs);
+      if (draggingNode || resizingNode || draggingCP) {
+        pushToHistory(safeTabs);
+      }
+
       if (connecting && !connecting.connected) {
         const dropX = connecting.currentX; const dropY = connecting.currentY;
         if (connecting.reanchorEnd === 'from') {
@@ -497,7 +385,12 @@ export default function App() {
           if (originNode && originNode.id !== connecting.targetNodeId) {
             let bestPort = 0; let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(originNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
-            const nextTabs = safeTabs.map((t) => { if (t.id !== activeTabId) return t; const filtered = t.connections.filter((c) => c.id !== connecting.replaceConnectionId); const newConn = { id: `conn-${Date.now()}`, fromNodeId: originNode.id, fromPortIndex: bestPort, toNodeId: connecting.targetNodeId, toPortIndex: connecting.targetPortIndex }; return { ...t, connections: [...filtered, newConn] }; });
+            const nextTabs = safeTabs.map((t) => {
+              if (t.id !== activeTabId) return t;
+              const filtered = t.connections.filter((c) => c.id !== connecting.replaceConnectionId);
+              const newConn = { id: `conn-${Date.now()}`, fromNodeId: originNode.id, fromPortIndex: bestPort, toNodeId: connecting.targetNodeId, toPortIndex: connecting.targetPortIndex };
+              return { ...t, connections: [...filtered, newConn] };
+            });
             setTabs(nextTabs); pushToHistory(nextTabs);
           }
         } else {
@@ -505,7 +398,12 @@ export default function App() {
           if (targetNode) {
             let bestPort = 0; let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(targetNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
-            const nextTabs = safeTabs.map((t) => { if (t.id !== activeTabId) return t; const filtered = connecting.replaceConnectionId ? t.connections.filter((c) => c.id !== connecting.replaceConnectionId) : t.connections; const newConn = { id: `conn-${Date.now()}`, fromNodeId: connecting.fromNodeId, fromPortIndex: connecting.fromPortIndex, toNodeId: targetNode.id, toPortIndex: bestPort }; return { ...t, connections: [...filtered, newConn] }; });
+            const nextTabs = safeTabs.map((t) => {
+              if (t.id !== activeTabId) return t;
+              const filtered = connecting.replaceConnectionId ? t.connections.filter((c) => c.id !== connecting.replaceConnectionId) : t.connections;
+              const newConn = { id: `conn-${Date.now()}`, fromNodeId: connecting.fromNodeId, fromPortIndex: connecting.fromPortIndex, toNodeId: targetNode.id, toPortIndex: bestPort };
+              return { ...t, connections: [...filtered, newConn] };
+            });
             setTabs(nextTabs); pushToHistory(nextTabs);
           } else if (!connecting.replaceConnectionId) {
             const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
@@ -523,27 +421,26 @@ export default function App() {
           }
         }
       }
-      setIsPanning(false); setDraggingNode(null); setResizingNode(null); setConnecting(null);
+      setIsPanning(false); setDraggingNode(null); setResizingNode(null); setConnecting(null); setDraggingCP(null);
     };
 
     const onWindowMouseMove = (e) => onPointerMove(e.clientX, e.clientY);
     const onWindowMouseUp = () => onPointerUp();
-    const onWindowTouchMove = (e) => { if (e.touches && e.touches.length > 0) { const touch = e.touches[0]; onPointerMove(touch.clientX, touch.clientY); if (draggingNode || connecting || resizingNode) { if (e.cancelable) e.preventDefault(); } } };
+    const onWindowTouchMove = (e) => { if (e.touches && e.touches.length > 0) { const touch = e.touches[0]; onPointerMove(touch.clientX, touch.clientY); if (draggingNode || connecting || resizingNode || draggingCP) { if (e.cancelable) e.preventDefault(); } } };
     const onWindowTouchEnd = () => onPointerUp();
 
-    if (isPanning || draggingNode || resizingNode || connecting) {
+    if (isPanning || draggingNode || resizingNode || connecting || draggingCP) {
       window.addEventListener('mousemove', onWindowMouseMove); window.addEventListener('mouseup', onWindowMouseUp);
       window.addEventListener('touchmove', onWindowTouchMove, { passive: false }); window.addEventListener('touchend', onWindowTouchEnd);
     }
-
     return () => {
       window.removeEventListener('mousemove', onWindowMouseMove); window.removeEventListener('mouseup', onWindowMouseUp);
       window.removeEventListener('touchmove', onWindowTouchMove); window.removeEventListener('touchend', onWindowTouchEnd);
     };
-  }, [isPanning, draggingNode, resizingNode, connecting, transform, safeTabs, activeTab, activeTabId, pushToHistory]);
+  }, [isPanning, draggingNode, resizingNode, connecting, draggingCP, transform, safeTabs, activeTab, activeTabId, pushToHistory]);
 
   const handlePortMouseDown = (e, nodeId, portIndex) => {
-    setDraggingNode(null); setResizingNode(null); setSelectedConnectionId(null);
+    setDraggingNode(null); setResizingNode(null); setSelectedConnectionId(null); setDraggingCP(null);
     const node = activeTab.nodes.find((n) => n.id === nodeId);
     const pos = getPortPosition(node, portIndex);
     setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y, connected: false });
@@ -558,8 +455,6 @@ export default function App() {
   };
 
   const selectedNode = activeTab.nodes.find((n) => n.id === selectedNodeId);
-
-  // LOGICA PARA VERIFICAR SE O USUARIO PODE ABRIR O PAINEL DE ADMIN (GERAL OU DONO DE EQUIPE)
   const isUserAdminOrTeamOwner = profile?.role === 'admin' || profile?.is_team_owner;
 
   return (
@@ -609,11 +504,45 @@ export default function App() {
             if (!fromNode || !toNode) return null;
             const p1 = getPortPosition(fromNode, conn.fromPortIndex); const p2 = getPortPosition(toNode, conn.toPortIndex);
             const isConnSelected = selectedConnectionId === conn.id;
+
             if (connecting?.replaceConnectionId === conn.id) return null;
+
             return (
               <g key={conn.id}>
-                <path d={getBezierPath(p1, p2)} fill="none" stroke={isConnSelected ? '#2563EB' : '#94A3B8'} strokeWidth={isConnSelected ? 3.2 : 2} strokeLinecap="round" markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'} style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }} />
-                <path d={getBezierPath(p1, p2)} fill="none" stroke="transparent" strokeWidth={30} style={{ pointerEvents: 'stroke', cursor: 'pointer', touchAction: 'none' }} onClick={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedNodeId(null); }} onTouchStart={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedNodeId(null); }} />
+                <path d={getBezierPath(p1, p2, conn)} fill="none" stroke={isConnSelected ? '#2563EB' : '#94A3B8'} strokeWidth={isConnSelected ? 3.2 : 2} strokeLinecap="round" markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'} style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }} />
+                <path d={getBezierPath(p1, p2, conn)} fill="none" stroke="transparent" strokeWidth={30} style={{ pointerEvents: 'stroke', cursor: 'pointer', touchAction: 'none' }} onClick={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedNodeId(null); }} onTouchStart={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedNodeId(null); }} />
+                
+                {isConnSelected && (() => {
+                  const { cp1, cp2 } = getBezierControlPoints(p1, p2, conn);
+                  // Centro exato matemático da curva
+                  const midX = 0.125 * p1.x + 0.375 * cp1.x + 0.375 * cp2.x + 0.125 * p2.x;
+                  const midY = 0.125 * p1.y + 0.375 * cp1.y + 0.375 * cp2.y + 0.125 * p2.y;
+
+                  return (
+                    <g>
+                      {/* Guias visuais (traços pontilhados ligando a ponta à bolinha de curva) */}
+                      <line x1={p1.x} y1={p1.y} x2={cp1.x} y2={cp1.y} stroke="#3B82F6" strokeWidth={1.5} strokeDasharray="4,4" opacity="0.6" />
+                      <line x1={p2.x} y1={p2.y} x2={cp2.x} y2={cp2.y} stroke="#3B82F6" strokeWidth={1.5} strokeDasharray="4,4" opacity="0.6" />
+
+                      {/* Alça de Curvatura 1 (Origem) */}
+                      <circle cx={cp1.x} cy={cp1.y} r={22} fill="transparent" style={{ cursor: 'move', pointerEvents: 'auto', touchAction: 'none' }} onMouseDown={(e) => handleStartDragCP(e, conn, 1)} onTouchStart={(e) => { const t = e.touches[0]; handleStartDragCP({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 1); }} />
+                      <circle cx={cp1.x} cy={cp1.y} r={7} fill="#FFFFFF" stroke="#3B82F6" strokeWidth={2.5} pointerEvents="none" />
+
+                      {/* Alça de Curvatura 2 (Destino) */}
+                      <circle cx={cp2.x} cy={cp2.y} r={22} fill="transparent" style={{ cursor: 'move', pointerEvents: 'auto', touchAction: 'none' }} onMouseDown={(e) => handleStartDragCP(e, conn, 2)} onTouchStart={(e) => { const t = e.touches[0]; handleStartDragCP({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 2); }} />
+                      <circle cx={cp2.x} cy={cp2.y} r={7} fill="#FFFFFF" stroke="#3B82F6" strokeWidth={2.5} pointerEvents="none" />
+
+                      {/* BOTÃO VERMELHO CENTRAL PARA RESETAR A CURVATURA */}
+                      {(conn.cp1Offset || conn.cp2Offset) && (
+                        <g>
+                          <circle cx={midX} cy={midY} r={18} fill="transparent" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onMouseDown={(e) => handleResetCurve(e, conn.id)} onTouchStart={(e) => handleResetCurve(e, conn.id)} title="Clique para redefinir a curva automática" />
+                          <circle cx={midX} cy={midY} r={6} fill="#EF4444" stroke="#FFFFFF" strokeWidth={2} pointerEvents="none" />
+                        </g>
+                      )}
+                    </g>
+                  );
+                })()}
+
                 {isConnSelected && (
                   <>
                     <g>
@@ -664,14 +593,7 @@ export default function App() {
 
       <AuthModal isOpen={isAuthOpen} onClose={() => user && setIsAuthOpen(false)} onAuthSuccess={() => setIsAuthOpen(false)} />
       <ForcePasswordChangeModal isOpen={Boolean(profile?.must_change_password)} userId={user?.id} onSuccess={() => loadUserProfile(user?.id)} />
-      
-      {/* PAINEL DE ADMIN LIGADO PARA ABRIR O MAPA DE UM USUÁRIO */}
-      <AdminPanel 
-        isOpen={isAdminOpen} 
-        onClose={() => setIsAdminOpen(false)} 
-        onSelectMap={(map) => handleSelectMap(map)} 
-      />
-      
+      <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} onSelectMap={(map) => handleSelectMap(map)} />
       <TeamPanel isOpen={isTeamOpen} onClose={() => setIsTeamOpen(false)} profile={profile} onProfileUpdate={() => loadUserProfile(user?.id)} />
       <MapsManagerModal isOpen={isMapsOpen} onClose={() => setIsMapsOpen(false)} onSelectMap={handleSelectMap} userId={user?.id} />
     </div>
