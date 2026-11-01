@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Toolbar from './components/Toolbar';
 import TabsBar from './components/TabsBar';
+import MindNode from './components/MindNode';
 import AuthModal from './components/AuthModal';
 import ForcePasswordChangeModal from './components/ForcePasswordChangeModal';
 import AdminPanel from './components/AdminPanel';
@@ -9,7 +10,6 @@ import { getPortPosition, getBezierPath } from './constants';
 import { supabase } from './supabaseClient';
 
 export default function App() {
-  // Estados de Autenticação e Perfil
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -17,32 +17,37 @@ export default function App() {
   const [isMapsOpen, setIsMapsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Mapa Ativo e Abas
   const [currentMap, setCurrentMap] = useState(null);
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [clipboardNode, setClipboardNode] = useState(null);
 
-  // Pan, Zoom e Conexões
+  // Pan & Zoom
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
+
+  // Arrastos e Redimensionamentos
   const [draggingNode, setDraggingNode] = useState(null);
+  const [resizingNode, setResizingNode] = useState(null);
   const [connecting, setConnecting] = useState(null);
   const containerRef = useRef(null);
 
-  // 1. Monitorar Sessão do Supabase
   const loadUserProfile = async (userId) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     setProfile(data || null);
   };
 
+  // 1. Ao abrir o site: se não estiver logado, abre a tela de login na hora!
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
       if (session?.user) {
         loadUserProfile(session.user.id);
         setIsMapsOpen(true);
+      } else {
+        setIsAuthOpen(true); // Login na tela inicial se deslogado!
       }
     });
 
@@ -54,23 +59,25 @@ export default function App() {
         setProfile(null);
         setCurrentMap(null);
         setTabs([]);
+        setIsAuthOpen(true);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. Carregar Mapa Selecionado
   const handleSelectMap = (map) => {
     setCurrentMap(map);
-    const loadedTabs = map.data?.tabs || [{ id: 'tab-1', title: 'Mapa 1', nodes: [], connections: [] }];
+    const loadedTabs = map.data?.tabs || [
+      { id: 'tab-1', title: 'Mapa 1', nodes: [], connections: [] }
+    ];
     setTabs(loadedTabs);
     setActiveTabId(loadedTabs[0]?.id || 'tab-1');
     setSelectedNodeId(null);
     setTransform({ x: 0, y: 0, scale: 1 });
   };
 
-  // 3. Salvar Automaticamente na Nuvem
+  // Auto-salvamento na nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -87,7 +94,11 @@ export default function App() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0] || { nodes: [], connections: [] };
 
-  // Atalho Tecla 'P' (Centralizar) e Tecla 'Delete'
+  const updateActiveTabData = (updater) => {
+    setTabs((prev) => prev.map((t) => (t.id === activeTabId ? updater(t) : t)));
+  };
+
+  // Atalhos de teclado (P, Delete, Ctrl+C, Ctrl+V)
   const handleResetView = useCallback(() => {
     if (!activeTab.nodes.length) {
       setTransform({ x: 0, y: 0, scale: 1 });
@@ -104,21 +115,15 @@ export default function App() {
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedNodeId) return;
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === activeTabId
-          ? {
-              ...t,
-              nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
-              connections: t.connections.filter(
-                (c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId
-              )
-            }
-          : t
+    updateActiveTabData((t) => ({
+      ...t,
+      nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
+      connections: t.connections.filter(
+        (c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId
       )
-    );
+    }));
     setSelectedNodeId(null);
-  }, [selectedNodeId, activeTabId]);
+  }, [selectedNodeId]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -129,13 +134,27 @@ export default function App() {
         handleResetView();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         handleDeleteSelected();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const nodeToCopy = activeTab.nodes.find((n) => n.id === selectedNodeId);
+        if (nodeToCopy) setClipboardNode({ ...nodeToCopy });
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+        if (clipboardNode) {
+          const newNode = {
+            ...clipboardNode,
+            id: `node-${Date.now()}`,
+            x: clipboardNode.x + 40,
+            y: clipboardNode.y + 40
+          };
+          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }));
+          setSelectedNodeId(newNode.id);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleResetView, handleDeleteSelected]);
+  }, [handleResetView, handleDeleteSelected, activeTab, selectedNodeId, clipboardNode]);
 
-  // Zoom centrado no mouse
+  // Zoom
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -147,48 +166,49 @@ export default function App() {
     setTransform({ x: newX, y: newY, scale: newScale });
   };
 
-  // Gerenciamento de Nós
-  const updateActiveTabData = (updater) => {
-    setTabs((prev) => prev.map((t) => (t.id === activeTabId ? updater(t) : t)));
+  // Duplo clique no vazio: cria nó imediatamente!
+  const handleDoubleClickCanvas = (e) => {
+    if (e.target !== containerRef.current) return;
+    const canvasX = (e.clientX - transform.x) / transform.scale;
+    const canvasY = (e.clientY - transform.y) / transform.scale;
+
+    const newNode = {
+      id: `node-${Date.now()}`,
+      x: canvasX - 85,
+      y: canvasY - 37,
+      width: 170,
+      height: 75,
+      text: '',
+      backgroundColor: '#FFFFFF',
+      textColor: '#1E293B',
+      fontSize: 14,
+      textAlignment: 'Left',
+      imageData: null
+    };
+
+    updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }));
+    setSelectedNodeId(newNode.id);
   };
 
   const handleAddNode = () => {
     const newNode = {
       id: `node-${Date.now()}`,
-      x: -transform.x + window.innerWidth / 2 - 80,
-      y: -transform.y + window.innerHeight / 2 - 30,
-      text: 'Novo Tópico',
-      color: '#FFFFFF',
+      x: -transform.x + window.innerWidth / 2 - 85,
+      y: -transform.y + window.innerHeight / 2 - 37,
+      width: 170,
+      height: 75,
+      text: '',
+      backgroundColor: '#FFFFFF',
+      textColor: '#1E293B',
       fontSize: 14,
-      align: 'left',
-      image: null
+      textAlignment: 'Left',
+      imageData: null
     };
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }));
     setSelectedNodeId(newNode.id);
   };
 
-  const handleAddImage = (imageDataUrl) => {
-    if (selectedNodeId) {
-      updateActiveTabData((t) => ({
-        ...t,
-        nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, image: imageDataUrl } : n))
-      }));
-    } else {
-      const newNode = {
-        id: `node-${Date.now()}`,
-        x: -transform.x + window.innerWidth / 2 - 100,
-        y: -transform.y + window.innerHeight / 2 - 80,
-        text: '',
-        color: '#FFFFFF',
-        fontSize: 14,
-        align: 'center',
-        image: imageDataUrl
-      };
-      updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }));
-      setSelectedNodeId(newNode.id);
-    }
-  };
-
+  // Mouse e Arrastos
   const handleMouseDown = (e) => {
     if (e.target === containerRef.current || e.button === 1 || e.button === 2) {
       setIsPanning(true);
@@ -213,6 +233,21 @@ export default function App() {
           n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n
         )
       }));
+    } else if (resizingNode) {
+      const dx = (e.clientX - resizingNode.startX) / transform.scale;
+      const dy = (e.clientY - resizingNode.startY) / transform.scale;
+      updateActiveTabData((t) => ({
+        ...t,
+        nodes: t.nodes.map((n) =>
+          n.id === resizingNode.id
+            ? {
+                ...n,
+                width: Math.max(120, resizingNode.origW + dx),
+                height: Math.max(60, resizingNode.origH + dy)
+              }
+            : n
+        )
+      }));
     } else if (connecting) {
       const canvasMouseX = (e.clientX - transform.x) / transform.scale;
       const canvasMouseY = (e.clientY - transform.y) / transform.scale;
@@ -221,35 +256,81 @@ export default function App() {
   };
 
   const handleMouseUp = () => {
+    // Soltar linha de conexão no vazio: cria nó conectado automaticamente!
+    if (connecting && !connecting.connected) {
+      const newNode = {
+        id: `node-${Date.now()}`,
+        x: connecting.currentX - 85,
+        y: connecting.currentY - 37,
+        width: 170,
+        height: 75,
+        text: '',
+        backgroundColor: '#FFFFFF',
+        textColor: '#1E293B',
+        fontSize: 14,
+        textAlignment: 'Left',
+        imageData: null
+      };
+
+      const newConn = {
+        id: `conn-${Date.now()}`,
+        fromNodeId: connecting.fromNodeId,
+        fromPortIndex: connecting.fromPortIndex,
+        toNodeId: newNode.id,
+        toPortIndex: 3 // Conecta na porta esquerda
+      };
+
+      updateActiveTabData((t) => ({
+        ...t,
+        nodes: [...t.nodes, newNode],
+        connections: [...t.connections, newConn]
+      }));
+      setSelectedNodeId(newNode.id);
+    }
+
     setIsPanning(false);
     setDraggingNode(null);
+    setResizingNode(null);
     setConnecting(null);
   };
 
-  // Conexões Bézier
+  // Conexão entre portas
   const handlePortMouseDown = (e, nodeId, portIndex) => {
     e.stopPropagation();
     const node = activeTab.nodes.find((n) => n.id === nodeId);
     const pos = getPortPosition(node, portIndex);
-    setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y });
+    setConnecting({
+      fromNodeId: nodeId,
+      fromPortIndex: portIndex,
+      currentX: pos.x,
+      currentY: pos.y,
+      connected: false
+    });
   };
 
   const handlePortMouseUp = (e, toNodeId, toPortIndex) => {
     e.stopPropagation();
     if (connecting && connecting.fromNodeId !== toNodeId) {
-      const newConn = {
-        id: `conn-${Date.now()}`,
-        fromNodeId: connecting.fromNodeId,
-        fromPortIndex: connecting.fromPortIndex,
-        toNodeId,
-        toPortIndex
-      };
-      updateActiveTabData((t) => ({ ...t, connections: [...t.connections, newConn] }));
+      const alreadyExists = activeTab.connections.some(
+        (c) =>
+          (c.fromNodeId === connecting.fromNodeId && c.toNodeId === toNodeId) ||
+          (c.fromNodeId === toNodeId && c.toNodeId === connecting.fromNodeId)
+      );
+
+      if (!alreadyExists) {
+        const newConn = {
+          id: `conn-${Date.now()}`,
+          fromNodeId: connecting.fromNodeId,
+          fromPortIndex: connecting.fromPortIndex,
+          toNodeId,
+          toPortIndex
+        };
+        updateActiveTabData((t) => ({ ...t, connections: [...t.connections, newConn] }));
+      }
+      setConnecting((prev) => ({ ...prev, connected: true }));
     }
-    setConnecting(null);
   };
 
-  // Exportar JSON
   const handleExport = () => {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(tabs, null, 2));
     const a = document.createElement('a');
@@ -268,20 +349,35 @@ export default function App() {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onDoubleClick={handleDoubleClickCanvas}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Barra de Ferramentas Superior */}
       <Toolbar
         onAddNode={handleAddNode}
         onExport={handleExport}
-        onAddImage={handleAddImage}
+        onAddImage={(img) => {
+          if (selectedNodeId) {
+            updateActiveTabData((t) => ({
+              ...t,
+              nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n))
+            }));
+          }
+        }}
         selectedNode={selectedNode}
-        onUpdateSelected={(patch) =>
+        onUpdateSelected={(patch) => {
           updateActiveTabData((t) => ({
             ...t,
-            nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, ...patch } : n))
-          }))
-        }
+            nodes: t.nodes.map((n) => {
+              if (n.id !== selectedNodeId) return n;
+              return {
+                ...n,
+                backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor,
+                fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize,
+                textAlignment: patch.align !== undefined ? patch.align : n.textAlignment
+              };
+            })
+          }));
+        }}
         onDeleteSelected={handleDeleteSelected}
         onResetView={handleResetView}
         onOpenMaps={() => setIsMapsOpen(true)}
@@ -293,7 +389,7 @@ export default function App() {
         isSaving={isSaving}
       />
 
-      {/* SVG para linhas das Curvas de Bézier */}
+      {/* SVG com Marcador de Seta Tangencial Perfeito */}
       <svg
         style={{
           position: 'absolute',
@@ -306,6 +402,15 @@ export default function App() {
           transformOrigin: '0 0'
         }}
       >
+        <defs>
+          <marker id="arrow-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#94A3B8" />
+          </marker>
+          <marker id="arrow-drag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#2563EB" />
+          </marker>
+        </defs>
+
         {activeTab.connections.map((conn) => {
           const fromNode = activeTab.nodes.find((n) => n.id === conn.fromNodeId);
           const toNode = activeTab.nodes.find((n) => n.id === conn.toNodeId);
@@ -318,8 +423,9 @@ export default function App() {
               d={getBezierPath(p1, p2)}
               fill="none"
               stroke="#94A3B8"
-              strokeWidth="2.2"
+              strokeWidth="2"
               strokeLinecap="round"
+              markerEnd="url(#arrow-fixed)"
             />
           );
         })}
@@ -334,14 +440,15 @@ export default function App() {
               { x: connecting.currentX, y: connecting.currentY }
             )}
             fill="none"
-            stroke="#3B82F6"
+            stroke="#2563EB"
             strokeWidth="2.5"
             strokeDasharray="5,5"
+            markerEnd="url(#arrow-drag)"
           />
         )}
       </svg>
 
-      {/* Camada com os Balões / Cards */}
+      {/* Camada dos Balões */}
       <div
         style={{
           position: 'absolute',
@@ -351,76 +458,53 @@ export default function App() {
           transformOrigin: '0 0'
         }}
       >
-        {activeTab.nodes.map((node) => (
-          <div
+        {activeTab.nodes.map((node, index) => (
+          <MindNode
             key={node.id}
-            className={`mind-node ${selectedNodeId === node.id ? 'selected' : ''}`}
-            style={{
-              left: `${node.x}px`,
-              top: `${node.y}px`,
-              backgroundColor: node.color || '#FFFFFF',
-              fontSize: `${node.fontSize || 14}px`,
-              textAlign: node.align || 'left'
-            }}
-            onMouseDown={(e) => {
+            node={node}
+            isSelected={selectedNodeId === node.id}
+            isRoot={index === 0}
+            onSelect={(e, id) => {
               e.stopPropagation();
-              setSelectedNodeId(node.id);
+              setSelectedNodeId(id);
+            }}
+            onStartDrag={(e, id) => {
               setDraggingNode({
-                id: node.id,
+                id,
                 startX: e.clientX,
                 startY: e.clientY,
                 origX: node.x,
                 origY: node.y
               });
             }}
-          >
-            {[0, 1, 2, 3].map((portIdx) => {
-              const portClass = ['port-top', 'port-right', 'port-bottom', 'port-left'][portIdx];
-              return (
-                <div
-                  key={portIdx}
-                  className={`port ${portClass}`}
-                  onMouseDown={(e) => handlePortMouseDown(e, node.id, portIdx)}
-                  onMouseUp={(e) => handlePortMouseUp(e, node.id, portIdx)}
-                />
-              );
-            })}
-
-            {node.image && (
-              <img
-                src={node.image}
-                alt=""
-                style={{
-                  width: '100%',
-                  maxHeight: '180px',
-                  objectFit: 'contain',
-                  borderRadius: '6px',
-                  marginBottom: '8px',
-                  display: 'block'
-                }}
-              />
-            )}
-
-            <div
-              contentEditable
-              suppressContentEditableWarning
-              className="node-editor"
-              onBlur={(e) => {
-                const newText = e.currentTarget.innerText;
-                updateActiveTabData((t) => ({
-                  ...t,
-                  nodes: t.nodes.map((n) => (n.id === node.id ? { ...n, text: newText } : n))
-                }));
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {node.text}
-            </div>
-          </div>
+            onPortMouseDown={handlePortMouseDown}
+            onPortMouseUp={handlePortMouseUp}
+            onResizeStart={(e, id) => {
+              e.stopPropagation();
+              setResizingNode({
+                id,
+                startX: e.clientX,
+                startY: e.clientY,
+                origW: node.width || 170,
+                origH: node.height || 75
+              });
+            }}
+            onUpdateText={(id, text) => {
+              updateActiveTabData((t) => ({
+                ...t,
+                nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n))
+              }));
+            }}
+            onPaste={(id, patch) => {
+              updateActiveTabData((t) => ({
+                ...t,
+                nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n))
+              }));
+            }}
+          />
         ))}
       </div>
 
-      {/* A Barra de Abas SÓ APARECE se houver um mapa aberto */}
       {currentMap && (
         <TabsBar
           tabs={tabs}
@@ -434,7 +518,21 @@ export default function App() {
             const newTab = {
               id: newId,
               title: `Mapa ${tabs.length + 1}`,
-              nodes: [{ id: `node-${Date.now()}`, x: 350, y: 250, text: 'Novo Tópico', color: '#FFFFFF', fontSize: 14, align: 'center', image: null }],
+              nodes: [
+                {
+                  id: `node-${Date.now()}`,
+                  x: 350,
+                  y: 220,
+                  width: 170,
+                  height: 75,
+                  text: '',
+                  backgroundColor: '#FFFFFF',
+                  textColor: '#1E293B',
+                  fontSize: 16,
+                  textAlignment: 'Center',
+                  imageData: null
+                }
+              ],
               connections: []
             };
             setTabs((prev) => [...prev, newTab]);
@@ -446,10 +544,9 @@ export default function App() {
         />
       )}
 
-      {/* Modais do Sistema */}
       <AuthModal
         isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
+        onClose={() => user && setIsAuthOpen(false)}
         onAuthSuccess={() => setIsAuthOpen(false)}
       />
 
@@ -459,10 +556,7 @@ export default function App() {
         onSuccess={() => loadUserProfile(user?.id)}
       />
 
-      <AdminPanel
-        isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
-      />
+      <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
 
       <MapsManagerModal
         isOpen={isMapsOpen}
