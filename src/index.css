@@ -1,0 +1,173 @@
+:root {
+  --bg-canvas: #F8FAFC;
+  --node-border: #E2E8F0;
+  --text-main: #1E293B;
+  --primary-blue: #3B82F6;
+  --bezier-line: #94A3B8;
+  --bezier-active: #3B82F6;
+}
+
+body, html, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  background-color: var(--bg-canvas);
+  color: var(--text-main);
+}
+
+/* Área Infinita do Canvas */
+.canvas-container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.canvas-container.panning {
+  cursor: grabbing;
+}
+
+/* Barra Superior Minimalista */
+.top-toolbar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 6px 12px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+  border: 1px solid #E2E8F0;
+}
+
+/* Botões Planos e Arredondados */
+.btn-icon {
+  background: transparent;
+  border: none;
+  outline: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #475569;
+  transition: all 0.15s ease;
+}
+
+.btn-icon:hover {
+  background: #F1F5F9;
+  color: var(--primary-blue);
+}
+
+.btn-icon.active {
+  background: #EFF6FF;
+  color: var(--primary-blue);
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: #E2E8F0;
+  margin: 0 4px;
+}
+
+/* Balões / Cards de Nós */
+.mind-node {
+  position: absolute;
+  min-width: 120px;
+  max-width: 480px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1.5px solid var(--node-border);
+  cursor: move;
+  padding: 10px 14px;
+  box-sizing: border-box;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.mind-node.selected {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+/* Área de Edição Integrada */
+.node-editor {
+  outline: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  cursor: text;
+  word-break: break-word;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+/* Portas de Conexão (4 extremidades) */
+.port {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 2px solid #94A3B8;
+  cursor: crosshair;
+  z-index: 10;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.port:hover {
+  transform: scale(1.35);
+  border-color: var(--primary-blue);
+  background: var(--primary-blue);
+}
+
+.port-top { top: -6px; left: 50%; transform: translateX(-50%); }
+.port-right { right: -6px; top: 50%; transform: translateY(-50%); }
+.port-bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
+.port-left { left: -6px; top: 50%; transform: translateY(-50%); }
+
+/* Barra de Abas no Rodapé */
+.bottom-tabs {
+  position: fixed;
+  bottom: 16px;
+  left: 24px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 4px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 100;
+  border: 1px solid #E2E8F0;
+}
+
+.tab-item {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: #64748B;
+  transition: all 0.15s;
+}
+
+.tab-item.active {
+  background: #EFF6FF;
+  color: var(--primary-blue);
+}
