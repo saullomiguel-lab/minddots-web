@@ -23,7 +23,7 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [clipboardNode, setClipboardNode] = useState(null);
 
-  // Histórico Blindado contra Tela Branca
+  // Histórico Blindado
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -97,7 +97,6 @@ export default function App() {
     fitContentToScreen(loadedTabs[0]?.nodes || []);
   }, [fitContentToScreen]);
 
-  // Registro Seguro no Histórico (sem side-effects)
   const pushToHistory = useCallback((newTabs) => {
     if (!newTabs || !Array.isArray(newTabs)) return;
     setHistory((prev) => {
@@ -107,7 +106,6 @@ export default function App() {
     setHistoryIndex((prev) => prev + 1);
   }, [historyIndex]);
 
-  // Desfazer Seguro
   const handleUndo = useCallback(() => {
     if (historyIndex > 0 && history[historyIndex - 1]) {
       const newIdx = historyIndex - 1;
@@ -118,7 +116,6 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  // Refazer Seguro
   const handleRedo = useCallback(() => {
     if (historyIndex < history.length - 1 && history[historyIndex + 1]) {
       const newIdx = historyIndex + 1;
@@ -129,7 +126,7 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  // Sessão e Login Direto
+  // Carga de Mapa Recente
   const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -236,7 +233,7 @@ export default function App() {
     };
   }, [user]);
 
-  // Auto-salvamento na nuvem
+  // Auto-salvamento na Nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -262,7 +259,7 @@ export default function App() {
     }
   };
 
-  // Suporte Global a Colar Imagens e Textos com Ctrl+V
+  // Suporte Global a Colar Imagens e Textos com Ctrl+V no Balão Selecionado
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
@@ -288,11 +285,11 @@ export default function App() {
       }
 
       const text = e.clipboardData?.getData('text');
-      if (text) {
+      if (text && text.trim()) {
         updateActiveTabData((t) => ({
           ...t,
           nodes: t.nodes.map((n) =>
-            n.id === selectedNodeId ? { ...n, text: (n.text ? n.text + '\n' : '') + text } : n
+            n.id === selectedNodeId ? { ...n, text: (n.text ? n.text + '\n' : '') + text.trim() } : n
           )
         }), true);
         e.preventDefault();
@@ -303,7 +300,7 @@ export default function App() {
     return () => window.removeEventListener('paste', handleGlobalPaste);
   }, [selectedNodeId, safeTabs, activeTabId]);
 
-  // Atalhos de Teclado
+  // Tecla ESC para Cancelar Setas e Desmarcar
   const handleDeleteSelected = useCallback(() => {
     if (!selectedNodeId) return;
     updateActiveTabData((t) => ({
@@ -322,7 +319,12 @@ export default function App() {
       if (isInput) return;
 
       if (e.key === 'Escape') {
+        // ESC: Cancela a seta elástica se estiver puxando e desmarca balão
+        if (connecting) setConnecting(null);
         setSelectedNodeId(null);
+        setIsPanning(false);
+        setDraggingNode(null);
+        setResizingNode(null);
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         if (e.shiftKey) handleRedo();
@@ -341,7 +343,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, clipboardNode]);
+  }, [connecting, fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, clipboardNode]);
 
   // Zoom
   const handleWheel = (e) => {
@@ -404,7 +406,7 @@ export default function App() {
     }
   };
 
-  // Monitoramento Global do Mouse: Suporte ao Redimensionamento por Qualquer Linha
+  // Monitoramento Global
   useEffect(() => {
     const onWindowMouseMove = (e) => {
       if (isPanning) {
