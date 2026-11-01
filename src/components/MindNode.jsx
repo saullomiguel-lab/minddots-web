@@ -24,7 +24,6 @@ export default function MindNode({
     setEditText(node.text || '');
   }, [node.text]);
 
-  // Sincroniza a altura real exata do elemento na tela para as portas ficarem 100% no centro
   useEffect(() => {
     if (nodeRef.current && onHeightChange) {
       const actualHeight = nodeRef.current.offsetHeight;
@@ -34,7 +33,6 @@ export default function MindNode({
     }
   });
 
-  // Expansão imediata de todas as linhas ao abrir para editar
   useEffect(() => {
     if (isEditing && editorRef.current) {
       editorRef.current.focus();
@@ -73,10 +71,8 @@ export default function MindNode({
     }
   };
 
-  // Leitura da área de transferência com suporte direto a imagens e textos
   const handlePasteClick = async (e) => {
     e.stopPropagation();
-
     if (navigator.clipboard && navigator.clipboard.read) {
       try {
         const items = await navigator.clipboard.read();
@@ -91,7 +87,6 @@ export default function MindNode({
             reader.readAsDataURL(blob);
             return;
           }
-
           if (item.types.includes('text/plain')) {
             const textBlob = await item.getType('text/plain');
             const text = await textBlob.text();
@@ -102,7 +97,7 @@ export default function MindNode({
           }
         }
       } catch (err) {
-        console.warn('Leitura direta bloqueada:', err);
+        console.warn('Leitura bloqueada:', err);
       }
     }
 
@@ -158,12 +153,22 @@ export default function MindNode({
         boxSizing: 'border-box',
         cursor: isEditing ? 'text' : 'move',
         userSelect: isEditing ? 'text' : 'none',
+        touchAction: 'none',
         zIndex: isSelected ? 20 : 5
       }}
+      // Mouse no Computador
       onMouseDown={(e) => {
         if (e.button === 0 && !isEditing) {
           onSelect(e, node.id);
           onStartDrag(e, node.id);
+        }
+      }}
+      // Toque com o Dedo no Celular (Touch)
+      onTouchStart={(e) => {
+        if (!isEditing && e.touches.length === 1) {
+          onSelect(e, node.id);
+          const t = e.touches[0];
+          onStartDrag({ clientX: t.clientX, clientY: t.clientY }, node.id);
         }
       }}
       onDoubleClick={handleDoubleClick}
@@ -174,7 +179,8 @@ export default function MindNode({
           <button
             onClick={handlePasteClick}
             onMouseDown={(e) => e.stopPropagation()}
-            title="Colar texto ou imagem da área de transferência (ou aperte Ctrl+V)"
+            onTouchStart={(e) => e.stopPropagation()}
+            title="Colar texto ou imagem"
             style={{
               position: 'absolute',
               top: '-26px',
@@ -206,14 +212,14 @@ export default function MindNode({
         </>
       )}
 
-      {/* 4 Portas Conectoras: Bolinhas azuis com "+" milimetricamente centralizadas */}
+      {/* 4 Portas Conectoras com "+" azul: Sensor Touch e Mouse */}
       {isSelected &&
         [0, 1, 2, 3].map((portIdx) => {
           const positions = [
-            { top: '-16px', left: '50%', transform: 'translateX(-50%)' },      // Topo
-            { right: '-16px', top: '50%', transform: 'translateY(-50%)' },     // Direita (Centro exato)
-            { bottom: '-16px', left: '50%', transform: 'translateX(-50%)' },   // Base
-            { left: '-16px', top: '50%', transform: 'translateY(-50%)' }       // Esquerda (Centro exato)
+            { top: '-16px', left: '50%', transform: 'translateX(-50%)' },
+            { right: '-16px', top: '50%', transform: 'translateY(-50%)' },
+            { bottom: '-16px', left: '50%', transform: 'translateX(-50%)' },
+            { left: '-16px', top: '50%', transform: 'translateY(-50%)' }
           ];
           return (
             <div
@@ -227,6 +233,7 @@ export default function MindNode({
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'crosshair',
+                touchAction: 'none',
                 zIndex: 40
               }}
               onMouseDown={(e) => {
@@ -236,6 +243,12 @@ export default function MindNode({
               onMouseUp={(e) => {
                 e.stopPropagation();
                 onPortMouseUp(e, node.id, portIdx);
+              }}
+              // Sensor de Toque na Bolinha do "+"
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                const t = e.touches[0];
+                onPortMouseDown({ clientX: t.clientX, clientY: t.clientY }, node.id, portIdx);
               }}
               title="Puxe para criar ou ligar a outro balão"
             >
@@ -259,36 +272,33 @@ export default function MindNode({
           );
         })}
 
-      {/* Redimensionamento em qualquer linha da borda */}
+      {/* Redimensionamento nas Bordas */}
       {isSelected && (
         <>
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'right'); }}
+            onTouchStart={(e) => { e.stopPropagation(); const t = e.touches[0]; onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node.id, 'right'); }}
             style={{ position: 'absolute', top: '8px', bottom: '8px', right: '-4px', width: '8px', cursor: 'ew-resize', zIndex: 30 }}
-            title="Arraste a linha para redimensionar"
           />
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'left'); }}
+            onTouchStart={(e) => { e.stopPropagation(); const t = e.touches[0]; onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node.id, 'left'); }}
             style={{ position: 'absolute', top: '8px', bottom: '8px', left: '-4px', width: '8px', cursor: 'ew-resize', zIndex: 30 }}
-            title="Arraste a linha para redimensionar"
           />
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom'); }}
+            onTouchStart={(e) => { e.stopPropagation(); const t = e.touches[0]; onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node.id, 'bottom'); }}
             style={{ position: 'absolute', left: '8px', right: '8px', bottom: '-4px', height: '8px', cursor: 'ns-resize', zIndex: 30 }}
-            title="Arraste a linha para redimensionar"
           />
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'top'); }}
+            onTouchStart={(e) => { e.stopPropagation(); const t = e.touches[0]; onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node.id, 'top'); }}
             style={{ position: 'absolute', left: '8px', right: '8px', top: '-4px', height: '8px', cursor: 'ns-resize', zIndex: 30 }}
-            title="Arraste a linha para redimensionar"
           />
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom-right'); }}
+            onTouchStart={(e) => { e.stopPropagation(); const t = e.touches[0]; onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node.id, 'bottom-right'); }}
             style={{ position: 'absolute', right: '-4px', bottom: '-4px', width: '12px', height: '12px', cursor: 'nwse-resize', zIndex: 32 }}
-          />
-          <div
-            onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom-left'); }}
-            style={{ position: 'absolute', left: '-4px', bottom: '-4px', width: '12px', height: '12px', cursor: 'nesw-resize', zIndex: 32 }}
           />
         </>
       )}
