@@ -36,7 +36,7 @@ body, html, #root {
   cursor: grabbing;
 }
 
-/* 1. BARRA SUPERIOR (DESKTOP E HEADER DO CELULAR) */
+/* 1. BARRA SUPERIOR */
 .top-toolbar {
   position: fixed;
   top: 12px;
@@ -56,7 +56,6 @@ body, html, #root {
   box-sizing: border-box;
 }
 
-/* Botões Planos e Arredondados */
 .btn-icon {
   background: transparent;
   border: none;
@@ -95,20 +94,21 @@ body, html, #root {
   flex-shrink: 0;
 }
 
-/* 2. BOTÕES FLUTUANTES RÁPIDOS PARA CELULAR (CANTO INFERIOR DIREITO) */
+/* 2. BOTÕES FLUTUANTES NO CELULAR (Perfeitamente alinhados e de mesmo tamanho) */
 .mobile-fab-container {
   display: none;
   position: fixed;
   right: 16px;
-  bottom: 64px;
+  bottom: 68px;
   flex-direction: column;
+  align-items: center;
   gap: 10px;
   z-index: 95;
 }
 
 .fab-btn {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   background: #2563EB;
   color: #FFFFFF;
@@ -118,18 +118,23 @@ body, html, #root {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.fab-btn:active {
+  transform: scale(0.92);
 }
 
 .fab-btn.secondary {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   background: #FFFFFF;
-  color: #475569;
-  border: 1px solid #E2E8F0;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+  color: #334155;
+  border: 1.5px solid #CBD5E1;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* 3. PAINEL DE FORMATAÇÃO CONTEXTUAL (SURGE PERTO DO POLEGAR NO CELULAR) */
+/* 3. PAINEL DE FORMATAÇÃO CONTEXTUAL */
 .mobile-format-drawer {
   display: none;
   position: fixed;
@@ -156,7 +161,6 @@ body, html, #root {
   to { transform: translate(-50%, 0); opacity: 1; }
 }
 
-/* Carrossel de 10 Cores no Celular */
 .colors-carousel {
   display: flex;
   align-items: center;
@@ -208,7 +212,7 @@ body, html, #root {
   font-weight: 600;
 }
 
-/* REGRAS EXCLUSIVAS DE CELULAR / TELAS ESTREITAS (<= 768px) */
+/* REGRAS DE CELULAR (<= 768px) */
 @media (max-width: 768px) {
   .desktop-only {
     display: none !important;
@@ -234,11 +238,11 @@ body, html, #root {
   .bottom-tabs {
     left: 8px;
     bottom: 8px;
-    max-width: calc(100vw - 80px); /* Deixa espaço para o botão flutuante */
+    max-width: calc(100vw - 84px);
   }
 }
 
-/* REGRAS EXCLUSIVAS DE PC / DESKTOP (> 768px) */
+/* REGRAS DE PC (> 768px) */
 @media (min-width: 769px) {
   .desktop-only {
     display: flex !important;
