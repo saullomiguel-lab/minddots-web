@@ -23,17 +23,19 @@ export function getPortPosition(node, portIndex) {
     case 1: return { x: node.x + w + 8, y: node.y + h / 2, normal: { x: 1, y: 0 } }; // Direita
     case 2: return { x: node.x + w / 2, y: node.y + h + 8, normal: { x: 0, y: 1 } }; // Base
     case 3: return { x: node.x - 8, y: node.y + h / 2, normal: { x: -1, y: 0 } };    // Esquerda
-    default: return { x: node.x + w / 2, y: node.y + h / 2, normal: { x: 0, y: 0 } };
+    default: return { x: node.x + w / 2, y: node.y + h / 2, normal: { x: 1, y: 0 } };
   }
 }
 
-// Curva suave de Bézier respeitando os vetores normais das portas
+// Curva suave de Bézier que respeita os vetores de entrada para a ponta da seta apontar perfeitamente
 export function getBezierPath(p1, p2) {
-  const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  const curvature = Math.max(distance * 0.45, 30);
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy);
+  const curvature = Math.min(Math.max(dist * 0.45, 35), 220);
 
-  const n1 = p1.normal || { x: p2.x > p1.x ? 1 : -1, y: 0 };
-  const n2 = p2.normal || { x: p1.x > p2.x ? 1 : -1, y: 0 };
+  const n1 = p1.normal || { x: dx >= 0 ? 1 : -1, y: 0 };
+  const n2 = p2.normal || { x: dx >= 0 ? -1 : 1, y: 0 };
 
   const cp1x = p1.x + n1.x * curvature;
   const cp1y = p1.y + n1.y * curvature;
