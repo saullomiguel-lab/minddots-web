@@ -20,6 +20,9 @@ export default function MindNode({
   const nodeRef = useRef(null);
   const pasteFileRef = useRef(null);
 
+  // Sensor de Duplo Toque no Celular (Double Tap)
+  const lastTapRef = useRef(0);
+
   useEffect(() => {
     setEditText(node.text || '');
   }, [node.text]);
@@ -33,6 +36,7 @@ export default function MindNode({
     }
   });
 
+  // Foco imediato e expansão ao abrir o editor
   useEffect(() => {
     if (isEditing && editorRef.current) {
       editorRef.current.focus();
@@ -46,6 +50,30 @@ export default function MindNode({
   const handleDoubleClick = (e) => {
     e.stopPropagation();
     setIsEditing(true);
+  };
+
+  // Sensor Touch: 1 toque arrasta, 2 toques rápidos abrem para escrever
+  const handleTouchStartNode = (e) => {
+    if (isEditing) return;
+
+    if (e.touches.length === 1) {
+      const now = Date.now();
+      const timeSinceLastTap = now - lastTapRef.current;
+
+      // Se tocou duas vezes em menos de 340 milissegundos: ATIVA DIGITAÇÃO!
+      if (timeSinceLastTap > 0 && timeSinceLastTap < 340) {
+        e.stopPropagation();
+        e.preventDefault();
+        setIsEditing(true);
+        lastTapRef.current = 0;
+        return;
+      }
+
+      lastTapRef.current = now;
+      onSelect(e, node.id);
+      const t = e.touches[0];
+      onStartDrag({ clientX: t.clientX, clientY: t.clientY }, node.id);
+    }
   };
 
   const finishEditing = () => {
@@ -163,14 +191,8 @@ export default function MindNode({
           onStartDrag(e, node.id);
         }
       }}
-      // Toque com o Dedo no Celular (Touch)
-      onTouchStart={(e) => {
-        if (!isEditing && e.touches.length === 1) {
-          onSelect(e, node.id);
-          const t = e.touches[0];
-          onStartDrag({ clientX: t.clientX, clientY: t.clientY }, node.id);
-        }
-      }}
+      // Sensor Inteligente de Toque no Celular
+      onTouchStart={handleTouchStartNode}
       onDoubleClick={handleDoubleClick}
     >
       {/* Botão Flutuante 📋 Colar */}
@@ -212,7 +234,7 @@ export default function MindNode({
         </>
       )}
 
-      {/* 4 Portas Conectoras com "+" azul: Sensor Touch e Mouse */}
+      {/* 4 Portas Conectoras com "+" azul */}
       {isSelected &&
         [0, 1, 2, 3].map((portIdx) => {
           const positions = [
@@ -244,7 +266,6 @@ export default function MindNode({
                 e.stopPropagation();
                 onPortMouseUp(e, node.id, portIdx);
               }}
-              // Sensor de Toque na Bolinha do "+"
               onTouchStart={(e) => {
                 e.stopPropagation();
                 const t = e.touches[0];
