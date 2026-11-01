@@ -57,42 +57,54 @@ export default function MindNode({
     }
   };
 
-  // Leitura direta da área de transferência (sem popups)
+  // Leitura robusta da área de transferência (Imagens e Textos)
   const handlePasteClick = async (e) => {
     e.stopPropagation();
-    try {
-      // 1. Tenta ler imagens ou conteúdos ricos
-      if (navigator.clipboard && navigator.clipboard.read) {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          const imageType = item.types.find((t) => t.startsWith('image/'));
-          if (imageType) {
-            const blob = await item.getType(imageType);
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-              onPaste(node.id, { imageData: evt.target.result });
-            };
-            reader.readAsDataURL(blob);
+
+    // 1. Tenta leitura avançada via navigator.clipboard
+    if (navigator.clipboard) {
+      try {
+        if (navigator.clipboard.read) {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            // Verifica se há imagem
+            const imageType = item.types.find((t) => t.startsWith('image/'));
+            if (imageType) {
+              const blob = await item.getType(imageType);
+              const reader = new FileReader();
+              reader.onload = (evt) => {
+                onPaste(node.id, { imageData: evt.target.result });
+              };
+              reader.readAsDataURL(blob);
+              return;
+            }
+
+            // Verifica se há texto simples no item
+            if (item.types.includes('text/plain')) {
+              const textBlob = await item.getType('text/plain');
+              const text = await textBlob.text();
+              if (text && text.trim()) {
+                onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text.trim() });
+                return;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Tentativa com clipboard.read() falhou, testando readText():', err);
+      }
+
+      // 2. Fallback direto para texto se o navegador restringir leitura de arquivos
+      try {
+        if (navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim()) {
+            onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text.trim() });
             return;
           }
         }
-      }
-
-      // 2. Se não houver imagem, lê o texto direto
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        const text = await navigator.clipboard.readText();
-        if (text) {
-          onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text });
-          return;
-        }
-      }
-    } catch (err) {
-      // Fallback secundário seguro para texto direto
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text) onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text });
-      } catch {
-        console.warn('Permissão de colagem bloqueada pelo navegador.');
+      } catch (textErr) {
+        console.warn('Permissão de área de transferência restrita pelo navegador:', textErr);
       }
     }
   };
@@ -129,7 +141,7 @@ export default function MindNode({
       }}
       onDoubleClick={handleDoubleClick}
     >
-      {/* Botão Flutuante 📋 Colar Direto */}
+      {/* Botão Flutuante 📋 Colar */}
       {isSelected && !isEditing && (
         <button
           onClick={handlePasteClick}
@@ -158,7 +170,7 @@ export default function MindNode({
         </button>
       )}
 
-      {/* 4 Portas Conectoras: Bolinhas azuis com um "+" branco no meio */}
+      {/* 4 Portas Conectoras com "+" branco no meio */}
       {isSelected &&
         [0, 1, 2, 3].map((portIdx) => {
           const positions = [
@@ -211,34 +223,29 @@ export default function MindNode({
           );
         })}
 
-      {/* Redimensionamento em QUALQUER PARTE DA LINHA / BORDA quando selecionado */}
+      {/* Ajuste de tamanho clicando em qualquer linha da borda */}
       {isSelected && (
         <>
-          {/* Borda Direita */}
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'right'); }}
             style={{ position: 'absolute', top: '8px', bottom: '8px', right: '-4px', width: '8px', cursor: 'ew-resize', zIndex: 30 }}
             title="Arraste a linha para redimensionar"
           />
-          {/* Borda Esquerda */}
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'left'); }}
             style={{ position: 'absolute', top: '8px', bottom: '8px', left: '-4px', width: '8px', cursor: 'ew-resize', zIndex: 30 }}
             title="Arraste a linha para redimensionar"
           />
-          {/* Borda Inferior */}
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom'); }}
             style={{ position: 'absolute', left: '8px', right: '8px', bottom: '-4px', height: '8px', cursor: 'ns-resize', zIndex: 30 }}
             title="Arraste a linha para redimensionar"
           />
-          {/* Borda Superior */}
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'top'); }}
             style={{ position: 'absolute', left: '8px', right: '8px', top: '-4px', height: '8px', cursor: 'ns-resize', zIndex: 30 }}
             title="Arraste a linha para redimensionar"
           />
-          {/* Cantos */}
           <div
             onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom-right'); }}
             style={{ position: 'absolute', right: '-4px', bottom: '-4px', width: '12px', height: '12px', cursor: 'nwse-resize', zIndex: 32 }}
@@ -250,7 +257,7 @@ export default function MindNode({
         </>
       )}
 
-      {/* Imagem (Preservando Proporção Real) */}
+      {/* Imagem Proporcional sem distorção */}
       {hasImage && (
         <img
           src={node.imageData}
@@ -268,7 +275,7 @@ export default function MindNode({
         />
       )}
 
-      {/* Editor de Texto In-Place (Abaixo da Imagem) */}
+      {/* Editor de Texto In-Place (rente e abaixo da imagem) */}
       {isEditing ? (
         <textarea
           ref={editorRef}
