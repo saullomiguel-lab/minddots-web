@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { User, Mail, Lock, ArrowLeft, UserPlus, LogIn, Sparkles } from 'lucide-react';
+import { User, Mail, Lock, ArrowLeft, UserPlus, Sparkles, Users } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
+  const [accountType, setAccountType] = useState('personal'); // 'personal' | 'team'
+  const [teamCode, setTeamCode] = useState('');
+  
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,13 +35,40 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           setLoading(false);
           return;
         }
+
+        // Se escolheu Equipe, verifica se ela existe antes de cadastrar
+        if (accountType === 'team') {
+          if (!teamCode.trim()) {
+            setError('Por favor, insira o código da equipe.');
+            setLoading(false);
+            return;
+          }
+          const { data: teamExists, error: rpcError } = await supabase.rpc('check_team_exists', {
+            team_code: teamCode.trim()
+          });
+          
+          if (rpcError) throw rpcError;
+          if (!teamExists) {
+            setError('Equipe inexistente. Verifique o código e tente novamente.');
+            setLoading(false);
+            return;
+          }
+        }
+
         const { error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { name: name.trim() } }
+          options: { 
+            data: { 
+              name: name.trim(),
+              team_code: accountType === 'team' ? teamCode.trim() : null
+            } 
+          }
         });
+        
         if (signUpError) throw signUpError;
         onAuthSuccess();
+        
       } else if (mode === 'login') {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -46,6 +76,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         });
         if (signInError) throw signInError;
         onAuthSuccess();
+        
       } else if (mode === 'forgot') {
         const { data, error: rpcError } = await supabase.rpc('request_password_reset', {
           user_email: email.trim()
@@ -83,9 +114,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         border: '1px solid #E2E8F0',
         boxSizing: 'border-box',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        maxHeight: '90vh',
+        overflowY: 'auto'
       }}>
-        {/* Logo e Cabeçalho Moderno */}
+        {/* Cabeçalho */}
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div style={{
             display: 'inline-flex',
@@ -105,11 +138,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
             MindDots
           </h1>
           <p style={{ fontSize: '13px', color: '#64748B', marginTop: '4px', margin: 0 }}>
-            Seu Mapa Mental Moderno
+            Seu Mapa Mental Colaborativo
           </p>
         </div>
 
-        {/* Alternador de Abas Moderno: [ Fazer Login ] | [ Cadastre-se ] */}
+        {/* Alternador de Login / Cadastro */}
         {mode !== 'forgot' && (
           <div style={{
             display: 'flex',
@@ -159,7 +192,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           </div>
         )}
 
-        {/* Mensagens de Feedback */}
+        {/* Mensagens de Erro/Sucesso */}
         {error && (
           <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 12px', borderRadius: '10px', fontSize: '13px', marginBottom: '14px', lineHeight: '1.4' }}>
             {error}
@@ -172,8 +205,72 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           </div>
         )}
 
-        {/* Formulário com Inputs mais Altos para Telas Touch */}
         <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+          
+          {/* Seletor "Apenas Eu" ou "Equipe" no Cadastro */}
+          {mode === 'register' && (
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setAccountType('personal')}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: accountType === 'personal' ? '2px solid #2563EB' : '1px solid #E2E8F0',
+                  background: accountType === 'personal' ? '#EFF6FF' : '#F8FAFC',
+                  color: accountType === 'personal' ? '#2563EB' : '#64748B',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <User size={16} /> Apenas Eu
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountType('team')}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: accountType === 'team' ? '2px solid #2563EB' : '1px solid #E2E8F0',
+                  background: accountType === 'team' ? '#EFF6FF' : '#F8FAFC',
+                  color: accountType === 'team' ? '#2563EB' : '#64748B',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Users size={16} /> Equipe
+              </button>
+            </div>
+          )}
+
+          {/* Campo de Código da Equipe */}
+          {mode === 'register' && accountType === 'team' && (
+            <div style={{ position: 'relative' }}>
+              <Users size={18} style={{ position: 'absolute', left: '14px', top: '13px', color: '#2563EB' }} />
+              <input
+                type="text"
+                placeholder="Insira o código da equipe"
+                required
+                value={teamCode}
+                onChange={(e) => setTeamCode(e.target.value)}
+                style={{ width: '100%', height: '46px', padding: '0 12px 0 42px', borderRadius: '10px', border: '1.5px solid #2563EB', fontSize: '14px', outline: 'none', boxSizing: 'border-box', backgroundColor: '#EFF6FF' }}
+              />
+            </div>
+          )}
+
+          {/* Campos Básicos */}
           {mode === 'register' && (
             <div style={{ position: 'relative' }}>
               <User size={18} style={{ position: 'absolute', left: '14px', top: '13px', color: '#94A3B8' }} />
@@ -228,7 +325,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
             </div>
           )}
 
-          {/* Botão de Ação Principal */}
+          {/* Botão de Ação */}
           <button
             type="submit"
             disabled={loading}
@@ -246,14 +343,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px'
+              gap: '6px',
+              transition: 'opacity 0.2s'
             }}
           >
-            {loading ? 'Processando...' : mode === 'login' ? 'Acessar Meu Mapa' : mode === 'register' ? 'Criar Minha Conta Grátis' : 'Solicitar ao Administrador'}
+            {loading ? 'Processando...' : mode === 'login' ? 'Acessar Meu Mapa' : mode === 'register' ? 'Criar Minha Conta' : 'Solicitar ao Administrador'}
           </button>
         </form>
 
-        {/* Rodapé e Botão de Destaque para Cadastro */}
+        {/* Rodapé Alternativo */}
         <div style={{ textAlign: 'center', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {mode === 'login' && (
             <>
@@ -292,16 +390,6 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
                 </button>
               </div>
             </>
-          )}
-
-          {mode === 'register' && (
-            <button
-              type="button"
-              onClick={() => { setMode('login'); setError(''); setMessage(''); }}
-              style={{ background: 'none', border: 'none', color: '#2563EB', fontWeight: 600, fontSize: '13px', cursor: 'pointer', marginTop: '4px' }}
-            >
-              Já possui uma conta? Fazer Login
-            </button>
           )}
 
           {mode === 'forgot' && (
