@@ -34,7 +34,7 @@ export default function App() {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Controle de Toque Touch Mobile (1 dedo = Pan, 2 dedos = Pinch-to-zoom)
+  // Controle de Gestos no Celular
   const touchStateRef = useRef({
     isTracking: false,
     lastX: 0,
@@ -449,7 +449,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [connecting, fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, selectedConnectionId, clipboardNode]);
 
-  // Zoom Mouse
+  // Zoom no Mouse
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -461,7 +461,7 @@ export default function App() {
     setTransform({ x: newX, y: newY, scale: newScale });
   };
 
-  // GESTOS TOUCH MOBILE (1 dedo = Mover mapa, 2 dedos = Zoom de pinça)
+  // Gestos Touch no Canvas (1 dedo = Mover mapa livre, 2 dedos = Pinça para Zoom)
   const handleTouchStart = (e) => {
     if (e.touches.length === 1 && e.target === containerRef.current) {
       touchStateRef.current.isTracking = true;
@@ -563,6 +563,7 @@ export default function App() {
     }
   };
 
+  // Reconexão de Linhas
   const handleStartReanchor = (e, conn, end) => {
     e.stopPropagation();
     setDraggingNode(null);
@@ -592,18 +593,18 @@ export default function App() {
     }
   };
 
-  // Monitoramento Global
+  // MONITORAMENTO UNIFICADO: MOUSE NO PC E TOUCH NO CELULAR
   useEffect(() => {
-    const onWindowMouseMove = (e) => {
+    const onPointerMove = (clientX, clientY) => {
       if (isPanning) {
         setTransform((prev) => ({
           ...prev,
-          x: e.clientX - panStartRef.current.x,
-          y: e.clientY - panStartRef.current.y
+          x: clientX - panStartRef.current.x,
+          y: clientY - panStartRef.current.y
         }));
       } else if (draggingNode) {
-        const dx = (e.clientX - draggingNode.startX) / transform.scale;
-        const dy = (e.clientY - draggingNode.startY) / transform.scale;
+        const dx = (clientX - draggingNode.startX) / transform.scale;
+        const dy = (clientY - draggingNode.startY) / transform.scale;
         updateActiveTabData((t) => ({
           ...t,
           nodes: t.nodes.map((n) =>
@@ -611,8 +612,8 @@ export default function App() {
           )
         }));
       } else if (resizingNode) {
-        const dx = (e.clientX - resizingNode.startX) / transform.scale;
-        const dy = (e.clientY - resizingNode.startY) / transform.scale;
+        const dx = (clientX - resizingNode.startX) / transform.scale;
+        const dy = (clientY - resizingNode.startY) / transform.scale;
         const dir = resizingNode.direction;
 
         let newW = resizingNode.origW;
@@ -638,17 +639,18 @@ export default function App() {
           )
         }));
       } else if (connecting) {
-        const canvasMouseX = (e.clientX - transform.x) / transform.scale;
-        const canvasMouseY = (e.clientY - transform.y) / transform.scale;
+        const canvasMouseX = (clientX - transform.x) / transform.scale;
+        const canvasMouseY = (clientY - transform.y) / transform.scale;
         setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
       }
     };
 
-    const onWindowMouseUp = () => {
+    const onPointerUp = () => {
       if (draggingNode || resizingNode) {
         pushToHistory(safeTabs);
       }
 
+      // Soltou a linha: Conecta ao balão existente ou cria novo balão
       if (connecting && !connecting.connected) {
         const dropX = connecting.currentX;
         const dropY = connecting.currentY;
@@ -657,7 +659,7 @@ export default function App() {
           const originNode = activeTab.nodes.find((n) => {
             const w = n.width || 170;
             const h = n.height || 75;
-            return dropX >= n.x - 15 && dropX <= n.x + w + 15 && dropY >= n.y - 15 && dropY <= n.y + h + 15;
+            return dropX >= n.x - 20 && dropX <= n.x + w + 20 && dropY >= n.y - 20 && dropY <= n.y + h + 20;
           });
 
           if (originNode && originNode.id !== connecting.targetNodeId) {
@@ -688,14 +690,16 @@ export default function App() {
             pushToHistory(nextTabs);
           }
         } else {
+          // Soltou a ponta da seta
           const targetNode = activeTab.nodes.find((n) => {
             if (n.id === connecting.fromNodeId) return false;
             const w = n.width || 170;
             const h = n.height || 75;
-            return dropX >= n.x - 15 && dropX <= n.x + w + 15 && dropY >= n.y - 15 && dropY <= n.y + h + 15;
+            return dropX >= n.x - 20 && dropX <= n.x + w + 20 && dropY >= n.y - 20 && dropY <= n.y + h + 20;
           });
 
           if (targetNode) {
+            // Conecta na extremidade mais próxima onde o dedo soltou
             let bestPort = 0;
             let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => {
@@ -724,6 +728,7 @@ export default function App() {
             setTabs(nextTabs);
             pushToHistory(nextTabs);
           } else if (!connecting.replaceConnectionId) {
+            // Soltou no vazio: cria nova ideia conectada
             const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
             let bestToPort = 3;
             if (fromNode) {
@@ -782,14 +787,34 @@ export default function App() {
       setConnecting(null);
     };
 
+    // Eventos de Mouse (Desktop)
+    const onWindowMouseMove = (e) => onPointerMove(e.clientX, e.clientY);
+    const onWindowMouseUp = () => onPointerUp();
+
+    // Eventos Touch (Celulares e Tablets)
+    const onWindowTouchMove = (e) => {
+      if (e.touches && e.touches.length > 0) {
+        const touch = e.touches[0];
+        onPointerMove(touch.clientX, touch.clientY);
+        if (draggingNode || connecting || resizingNode) {
+          e.preventDefault(); // Impede rolagem do navegador enquanto arrasta balão ou puxa linha
+        }
+      }
+    };
+    const onWindowTouchEnd = () => onPointerUp();
+
     if (isPanning || draggingNode || resizingNode || connecting) {
       window.addEventListener('mousemove', onWindowMouseMove);
       window.addEventListener('mouseup', onWindowMouseUp);
+      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
+      window.addEventListener('touchend', onWindowTouchEnd);
     }
 
     return () => {
       window.removeEventListener('mousemove', onWindowMouseMove);
       window.removeEventListener('mouseup', onWindowMouseUp);
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
     };
   }, [isPanning, draggingNode, resizingNode, connecting, transform, safeTabs, activeTab, activeTabId, pushToHistory]);
 
@@ -879,7 +904,7 @@ export default function App() {
         canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG Infinito com Conexões */}
+      {/* SVG com Conexões */}
       <svg
         style={{
           position: 'absolute',
@@ -946,7 +971,11 @@ export default function App() {
                       strokeWidth={2}
                       style={{ cursor: 'crosshair', pointerEvents: 'auto' }}
                       onMouseDown={(e) => handleStartReanchor(e, conn, 'to')}
-                      title="Arraste para mudar a extremidade ou ligar a outro balão"
+                      onTouchStart={(e) => {
+                        const t = e.touches[0];
+                        handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'to');
+                      }}
+                      title="Arraste para mudar extremidade ou balão"
                     />
 
                     <circle
@@ -958,6 +987,10 @@ export default function App() {
                       strokeWidth={2}
                       style={{ cursor: 'crosshair', pointerEvents: 'auto' }}
                       onMouseDown={(e) => handleStartReanchor(e, conn, 'from')}
+                      onTouchStart={(e) => {
+                        const t = e.touches[0];
+                        handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'from');
+                      }}
                       title="Arraste para mudar a origem da linha"
                     />
                   </>
@@ -987,7 +1020,7 @@ export default function App() {
               }
               fill="none"
               stroke="#2563EB"
-              strokeWidth="2.5"
+              strokeWidth={2.5}
               strokeDasharray="5,5"
               markerEnd="url(#arrow-drag)"
             />
@@ -1016,25 +1049,25 @@ export default function App() {
                 setSelectedNodeId(id);
                 setSelectedConnectionId(null);
               }}
-              onStartDrag={(e, id) => {
+              onStartDrag={(pos, id) => {
                 setDraggingNode({
                   id,
-                  startX: e.clientX,
-                  startY: e.clientY,
+                  startX: pos.clientX,
+                  startY: pos.clientY,
                   origX: node.x,
                   origY: node.y
                 });
               }}
               onPortMouseDown={handlePortMouseDown}
               onHeightChange={handleHeightSync}
-              onResizeStart={(e, id, direction) => {
+              onResizeStart={(pos, id, direction) => {
                 const targetNode = activeTab.nodes.find((n) => n.id === id);
                 if (!targetNode) return;
                 setResizingNode({
                   id,
                   direction,
-                  startX: e.clientX,
-                  startY: e.clientY,
+                  startX: pos.clientX,
+                  startY: pos.clientY,
                   origX: targetNode.x,
                   origY: targetNode.y,
                   origW: targetNode.width || 170,
