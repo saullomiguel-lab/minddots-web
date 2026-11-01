@@ -36,7 +36,15 @@ export default function App() {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Arrastos e Redimensionamentos
+  // Controle de Gestos no Celular
+  const touchStateRef = useRef({
+    isTracking: false,
+    lastX: 0,
+    lastY: 0,
+    startDist: 0,
+    startScale: 1
+  });
+
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
   const [connecting, setConnecting] = useState(null);
@@ -47,7 +55,6 @@ export default function App() {
     setProfile(data || null);
   };
 
-  // Encaixe 100% na Tela
   const fitContentToScreen = useCallback((nodes) => {
     if (!nodes || nodes.length === 0) {
       setTransform({ x: 0, y: 0, scale: 1 });
@@ -68,8 +75,10 @@ export default function App() {
 
     const contentW = Math.max(maxX - minX, 120);
     const contentH = Math.max(maxY - minY, 80);
+
     const availableW = window.innerWidth - padding * 2;
     const availableH = window.innerHeight - padding * 2 - 60;
+
     const scaleX = availableW / contentW;
     const scaleY = availableH / contentH;
     const optimalScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.25), 1.15);
@@ -131,7 +140,7 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  const loadRecentOrCreateMap = useCallback(async (userId) => {
+  const loadRecentOrCreateMap = useCallback(async (userId, profileData) => {
     try {
       const { data, error } = await supabase
         .from('maps')
@@ -146,21 +155,38 @@ export default function App() {
         handleSelectMap(data[0]);
       } else {
         const newMapData = {
-          tabs: [{
-            id: `tab-${Date.now()}`,
-            title: 'Mapa 1',
-            nodes: [{
-              id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75,
-              text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B',
-              fontSize: 16, textAlignment: 'Center', imageData: null
-            }],
-            connections: []
-          }]
+          tabs: [
+            {
+              id: `tab-${Date.now()}`,
+              title: 'Mapa 1',
+              nodes: [
+                {
+                  id: `node-${Date.now()}`,
+                  x: 350,
+                  y: 220,
+                  width: 170,
+                  height: 75,
+                  text: '',
+                  backgroundColor: '#FFFFFF',
+                  textColor: '#1E293B',
+                  fontSize: 16,
+                  textAlignment: 'Center',
+                  imageData: null
+                }
+              ],
+              connections: []
+            }
+          ]
         };
 
         const { data: createdMap, error: createError } = await supabase
           .from('maps')
-          .insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData }])
+          .insert([{ 
+            user_id: userId, 
+            title: 'Meu Primeiro Mapa', 
+            data: newMapData,
+            team_id: profileData?.team_id || null
+          }])
           .select()
           .single();
 
@@ -174,21 +200,23 @@ export default function App() {
   }, [handleSelectMap]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user || null);
       if (session?.user) {
-        loadUserProfile(session.user.id);
-        loadRecentOrCreateMap(session.user.id);
+        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        setProfile(p || null);
+        loadRecentOrCreateMap(session.user.id, p);
       } else {
         setIsAuthOpen(true);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user || null);
       if (session?.user) {
-        loadUserProfile(session.user.id);
-        loadRecentOrCreateMap(session.user.id);
+        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        setProfile(p || null);
+        loadRecentOrCreateMap(session.user.id, p);
       } else {
         setProfile(null);
         setCurrentMap(null);
@@ -208,7 +236,7 @@ export default function App() {
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(async () => {
-        alert('Sua sessão expirou por inatividade. Por favor, entre novamente.');
+        alert('Sua sessão expirou por inatividade (1 hora sem uso). Por favor, entre novamente.');
         await supabase.auth.signOut();
       }, ONE_HOUR);
     };
@@ -217,12 +245,14 @@ export default function App() {
     events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
 
     resetTimer();
+
     return () => {
       clearTimeout(inactivityTimer);
       events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
     };
   }, [user]);
 
+  // Auto-salvamento na Nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -258,6 +288,7 @@ export default function App() {
     );
   };
 
+  // Colar com Ctrl + V
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
@@ -269,18 +300,12 @@ export default function App() {
       let foundImageFile = null;
       if (clipboardData.files && clipboardData.files.length > 0) {
         for (let i = 0; i < clipboardData.files.length; i++) {
-          if (clipboardData.files[i].type.startsWith('image/')) {
-            foundImageFile = clipboardData.files[i];
-            break;
-          }
+          if (clipboardData.files[i].type.startsWith('image/')) { foundImageFile = clipboardData.files[i]; break; }
         }
       }
       if (!foundImageFile && clipboardData.items) {
         for (let i = 0; i < clipboardData.items.length; i++) {
-          if (clipboardData.items[i].type.startsWith('image/')) {
-            foundImageFile = clipboardData.items[i].getAsFile();
-            break;
-          }
+          if (clipboardData.items[i].type.startsWith('image/')) { foundImageFile = clipboardData.items[i].getAsFile(); break; }
         }
       }
       let htmlImgSrc = null;
@@ -300,22 +325,18 @@ export default function App() {
       const createBalloonWithImage = (imgSrc) => {
         e.preventDefault();
         const newNode = {
-          id: `node-${Date.now()}`,
-          x: -transform.x + window.innerWidth / 2 - 100,
-          y: -transform.y + window.innerHeight / 2 - 80,
+          id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 100, y: -transform.y + window.innerHeight / 2 - 80,
           width: 200, height: 120, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B',
           fontSize: 14, textAlignment: 'Center', imageData: imgSrc
         };
         updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
-        setSelectedNodeId(newNode.id);
-        setSelectedConnectionId(null);
+        setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
       };
 
       if (foundImageFile) {
         const reader = new FileReader();
         reader.onload = (evt) => createBalloonWithImage(evt.target.result);
-        reader.readAsDataURL(foundImageFile);
-        return;
+        reader.readAsDataURL(foundImageFile); return;
       }
       if (htmlImgSrc) return createBalloonWithImage(htmlImgSrc);
       if (isImageUrl) return createBalloonWithImage(plainText.trim());
@@ -323,15 +344,11 @@ export default function App() {
       if (plainText && plainText.trim()) {
         e.preventDefault();
         const newNode = {
-          id: `node-${Date.now()}`,
-          x: -transform.x + window.innerWidth / 2 - 85,
-          y: -transform.y + window.innerHeight / 2 - 37,
-          width: 170, height: 75, text: plainText.trim(), backgroundColor: '#FFFFFF',
-          textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null
+          id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 85, y: -transform.y + window.innerHeight / 2 - 37,
+          width: 170, height: 75, text: plainText.trim(), backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null
         };
         updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
-        setSelectedNodeId(newNode.id);
-        setSelectedConnectionId(null);
+        setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
       }
     };
     window.addEventListener('paste', handleGlobalPaste);
@@ -340,16 +357,12 @@ export default function App() {
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedConnectionId) {
-      updateActiveTabData((t) => ({
-        ...t, connections: t.connections.filter((c) => c.id !== selectedConnectionId)
-      }), true);
-      setSelectedConnectionId(null);
-      return;
+      updateActiveTabData((t) => ({ ...t, connections: t.connections.filter((c) => c.id !== selectedConnectionId) }), true);
+      setSelectedConnectionId(null); return;
     }
     if (selectedNodeId) {
       updateActiveTabData((t) => ({
-        ...t,
-        nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
+        ...t, nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
         connections: t.connections.filter((c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId)
       }), true);
       setSelectedNodeId(null);
@@ -360,14 +373,11 @@ export default function App() {
     const handleKeyDown = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
       if (isInput) return;
-
       if (e.key === 'Escape') {
         if (connecting) setConnecting(null);
-        setSelectedNodeId(null); setSelectedConnectionId(null);
-        setIsPanning(false); setDraggingNode(null); setResizingNode(null);
+        setSelectedNodeId(null); setSelectedConnectionId(null); setIsPanning(false); setDraggingNode(null); setResizingNode(null);
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
-        e.preventDefault();
-        if (e.shiftKey) handleRedo(); else handleUndo();
+        e.preventDefault(); if (e.shiftKey) handleRedo(); else handleUndo();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
         e.preventDefault(); handleRedo();
       } else if (e.key === 'p' || e.key === 'P') {
@@ -393,34 +403,59 @@ export default function App() {
     setTransform({ x: newX, y: newY, scale: newScale });
   };
 
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1 && e.target === containerRef.current) {
+      touchStateRef.current.isTracking = true;
+      touchStateRef.current.lastX = e.touches[0].clientX;
+      touchStateRef.current.lastY = e.touches[0].clientY;
+      setSelectedNodeId(null); setSelectedConnectionId(null);
+    } else if (e.touches.length === 2) {
+      touchStateRef.current.isTracking = false;
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      touchStateRef.current.startDist = dist; touchStateRef.current.startScale = transform.scale;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 1 && touchStateRef.current.isTracking) {
+      const dx = e.touches[0].clientX - touchStateRef.current.lastX;
+      const dy = e.touches[0].clientY - touchStateRef.current.lastY;
+      touchStateRef.current.lastX = e.touches[0].clientX; touchStateRef.current.lastY = e.touches[0].clientY;
+      setTransform((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+    } else if (e.touches.length === 2 && touchStateRef.current.startDist > 0) {
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const factor = dist / touchStateRef.current.startDist;
+      const newScale = Math.min(Math.max(touchStateRef.current.startScale * factor, 0.25), 3);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      setTransform((prev) => {
+        const newX = midX - (midX - prev.x) * (newScale / prev.scale);
+        const newY = midY - (midY - prev.y) * (newScale / prev.scale);
+        return { x: newX, y: newY, scale: newScale };
+      });
+    }
+  };
+
+  const handleTouchEnd = () => { touchStateRef.current.isTracking = false; touchStateRef.current.startDist = 0; };
+
   const handleDoubleClickCanvas = (e) => {
     if (e.target !== containerRef.current) return;
     const canvasX = (e.clientX - transform.x) / transform.scale;
     const canvasY = (e.clientY - transform.y) / transform.scale;
-
-    const newNode = {
-      id: `node-${Date.now()}`, x: canvasX - 85, y: canvasY - 37, width: 170, height: 75,
-      text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14,
-      textAlignment: 'Left', imageData: null
-    };
+    const newNode = { id: `node-${Date.now()}`, x: canvasX - 85, y: canvasY - 37, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null };
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
   };
 
   const handleAddNode = () => {
-    const newNode = {
-      id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 85, y: -transform.y + window.innerHeight / 2 - 37,
-      width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B',
-      fontSize: 14, textAlignment: 'Left', imageData: null
-    };
+    const newNode = { id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 85, y: -transform.y + window.innerHeight / 2 - 37, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null };
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
   };
 
   const handleMouseDown = (e) => {
     if (e.target === containerRef.current || e.button === 1 || e.button === 2) {
-      setIsPanning(true);
-      panStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+      setIsPanning(true); panStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
       setSelectedNodeId(null); setSelectedConnectionId(null);
     }
   };
@@ -428,40 +463,27 @@ export default function App() {
   const handleStartReanchor = (e, conn, end) => {
     if (e.stopPropagation) e.stopPropagation();
     setDraggingNode(null); setResizingNode(null);
-    const canvasMouseX = (e.clientX - transform.x) / transform.scale;
-    const canvasMouseY = (e.clientY - transform.y) / transform.scale;
-    if (end === 'to') {
-      setConnecting({ fromNodeId: conn.fromNodeId, fromPortIndex: conn.fromPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'to' });
-    } else {
-      setConnecting({ targetNodeId: conn.toNodeId, targetPortIndex: conn.toPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'from' });
-    }
+    const canvasMouseX = (e.clientX - transform.x) / transform.scale; const canvasMouseY = (e.clientY - transform.y) / transform.scale;
+    if (end === 'to') setConnecting({ fromNodeId: conn.fromNodeId, fromPortIndex: conn.fromPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'to' });
+    else setConnecting({ targetNodeId: conn.toNodeId, targetPortIndex: conn.toPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'from' });
   };
 
   useEffect(() => {
     const onPointerMove = (clientX, clientY) => {
-      if (isPanning) {
-        setTransform((prev) => ({ ...prev, x: clientX - panStartRef.current.x, y: clientY - panStartRef.current.y }));
-      } else if (draggingNode) {
-        const dx = (clientX - draggingNode.startX) / transform.scale;
-        const dy = (clientY - draggingNode.startY) / transform.scale;
-        updateActiveTabData((t) => ({
-          ...t, nodes: t.nodes.map((n) => n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n)
-        }));
+      if (isPanning) { setTransform((prev) => ({ ...prev, x: clientX - panStartRef.current.x, y: clientY - panStartRef.current.y })); }
+      else if (draggingNode) {
+        const dx = (clientX - draggingNode.startX) / transform.scale; const dy = (clientY - draggingNode.startY) / transform.scale;
+        updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n) }));
       } else if (resizingNode) {
-        const dx = (clientX - resizingNode.startX) / transform.scale;
-        const dy = (clientY - resizingNode.startY) / transform.scale;
-        const dir = resizingNode.direction;
+        const dx = (clientX - resizingNode.startX) / transform.scale; const dy = (clientY - resizingNode.startY) / transform.scale; const dir = resizingNode.direction;
         let newW = resizingNode.origW, newH = resizingNode.origH, newX = resizingNode.origX, newY = resizingNode.origY;
         if (dir.includes('right')) newW = Math.max(120, resizingNode.origW + dx);
         if (dir.includes('left')) { newW = Math.max(120, resizingNode.origW - dx); newX = resizingNode.origX + (resizingNode.origW - newW); }
         if (dir.includes('bottom')) newH = Math.max(60, resizingNode.origH + dy);
         if (dir.includes('top')) { newH = Math.max(60, resizingNode.origH - dy); newY = resizingNode.origY + (resizingNode.origH - newH); }
-        updateActiveTabData((t) => ({
-          ...t, nodes: t.nodes.map((n) => n.id === resizingNode.id ? { ...n, x: newX, y: newY, width: newW, height: newH } : n)
-        }));
+        updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => n.id === resizingNode.id ? { ...n, x: newX, y: newY, width: newW, height: newH } : n) }));
       } else if (connecting) {
-        const canvasMouseX = (clientX - transform.x) / transform.scale;
-        const canvasMouseY = (clientY - transform.y) / transform.scale;
+        const canvasMouseX = (clientX - transform.x) / transform.scale; const canvasMouseY = (clientY - transform.y) / transform.scale;
         setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
       }
     };
@@ -475,29 +497,15 @@ export default function App() {
           if (originNode && originNode.id !== connecting.targetNodeId) {
             let bestPort = 0; let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(originNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
-            const nextTabs = safeTabs.map((t) => {
-              if (t.id !== activeTabId) return t;
-              const filtered = t.connections.filter((c) => c.id !== connecting.replaceConnectionId);
-              const newConn = { id: `conn-${Date.now()}`, fromNodeId: originNode.id, fromPortIndex: bestPort, toNodeId: connecting.targetNodeId, toPortIndex: connecting.targetPortIndex };
-              return { ...t, connections: [...filtered, newConn] };
-            });
+            const nextTabs = safeTabs.map((t) => { if (t.id !== activeTabId) return t; const filtered = t.connections.filter((c) => c.id !== connecting.replaceConnectionId); const newConn = { id: `conn-${Date.now()}`, fromNodeId: originNode.id, fromPortIndex: bestPort, toNodeId: connecting.targetNodeId, toPortIndex: connecting.targetPortIndex }; return { ...t, connections: [...filtered, newConn] }; });
             setTabs(nextTabs); pushToHistory(nextTabs);
           }
         } else {
-          const targetNode = activeTab.nodes.find((n) => {
-            if (n.id === connecting.fromNodeId) return false;
-            const w = n.width || 170; const h = n.height || 75;
-            return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24;
-          });
+          const targetNode = activeTab.nodes.find((n) => { if (n.id === connecting.fromNodeId) return false; const w = n.width || 170; const h = n.height || 75; return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24; });
           if (targetNode) {
             let bestPort = 0; let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(targetNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
-            const nextTabs = safeTabs.map((t) => {
-              if (t.id !== activeTabId) return t;
-              const filtered = connecting.replaceConnectionId ? t.connections.filter((c) => c.id !== connecting.replaceConnectionId) : t.connections;
-              const newConn = { id: `conn-${Date.now()}`, fromNodeId: connecting.fromNodeId, fromPortIndex: connecting.fromPortIndex, toNodeId: targetNode.id, toPortIndex: bestPort };
-              return { ...t, connections: [...filtered, newConn] };
-            });
+            const nextTabs = safeTabs.map((t) => { if (t.id !== activeTabId) return t; const filtered = connecting.replaceConnectionId ? t.connections.filter((c) => c.id !== connecting.replaceConnectionId) : t.connections; const newConn = { id: `conn-${Date.now()}`, fromNodeId: connecting.fromNodeId, fromPortIndex: connecting.fromPortIndex, toNodeId: targetNode.id, toPortIndex: bestPort }; return { ...t, connections: [...filtered, newConn] }; });
             setTabs(nextTabs); pushToHistory(nextTabs);
           } else if (!connecting.replaceConnectionId) {
             const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
@@ -520,20 +528,12 @@ export default function App() {
 
     const onWindowMouseMove = (e) => onPointerMove(e.clientX, e.clientY);
     const onWindowMouseUp = () => onPointerUp();
-    const onWindowTouchMove = (e) => {
-      if (e.touches && e.touches.length > 0) {
-        const touch = e.touches[0];
-        onPointerMove(touch.clientX, touch.clientY);
-        if (draggingNode || connecting || resizingNode) { if (e.cancelable) e.preventDefault(); }
-      }
-    };
+    const onWindowTouchMove = (e) => { if (e.touches && e.touches.length > 0) { const touch = e.touches[0]; onPointerMove(touch.clientX, touch.clientY); if (draggingNode || connecting || resizingNode) { if (e.cancelable) e.preventDefault(); } } };
     const onWindowTouchEnd = () => onPointerUp();
 
     if (isPanning || draggingNode || resizingNode || connecting) {
-      window.addEventListener('mousemove', onWindowMouseMove);
-      window.addEventListener('mouseup', onWindowMouseUp);
-      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
-      window.addEventListener('touchend', onWindowTouchEnd);
+      window.addEventListener('mousemove', onWindowMouseMove); window.addEventListener('mouseup', onWindowMouseUp);
+      window.addEventListener('touchmove', onWindowTouchMove, { passive: false }); window.addEventListener('touchend', onWindowTouchEnd);
     }
 
     return () => {
@@ -549,11 +549,7 @@ export default function App() {
     setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y, connected: false });
   };
 
-  const handleExportImage = () => {
-    const title = currentMap?.title || activeTab?.title || 'mapa-mental';
-    exportMapToJpg(activeTab.nodes, activeTab.connections, title);
-  };
-
+  const handleExportImage = () => { exportMapToJpg(activeTab.nodes, activeTab.connections, currentMap?.title || activeTab?.title || 'mapa-mental'); };
   const handleExportFile = async () => {
     const title = (currentMap?.title || activeTab?.title || 'mapa-mental').toLowerCase().replace(/[^a-z0-9]/g, '-');
     const dataStr = JSON.stringify(tabs, null, 2);
@@ -563,12 +559,18 @@ export default function App() {
 
   const selectedNode = activeTab.nodes.find((n) => n.id === selectedNodeId);
 
+  // LOGICA PARA VERIFICAR SE O USUARIO PODE ABRIR O PAINEL DE ADMIN (GERAL OU DONO DE EQUIPE)
+  const isUserAdminOrTeamOwner = profile?.role === 'admin' || profile?.is_team_owner;
+
   return (
     <div
       ref={containerRef}
       className={`canvas-container ${isPanning ? 'panning' : ''}`}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       onDoubleClick={handleDoubleClickCanvas}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -576,26 +578,15 @@ export default function App() {
         onAddNode={handleAddNode}
         onExportImage={handleExportImage}
         onExportFile={handleExportFile}
-        onAddImage={(img) => {
-          if (selectedNodeId) {
-            updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true);
-          }
-        }}
+        onAddImage={(img) => { if (selectedNodeId) { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true); } }}
         selectedNode={selectedNode || (selectedConnectionId ? { isConnection: true } : null)}
-        onUpdateSelected={(patch) => {
-          updateActiveTabData((t) => ({
-            ...t, nodes: t.nodes.map((n) => {
-              if (n.id !== selectedNodeId) return n;
-              return { ...n, backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor, fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize, textAlignment: patch.align !== undefined ? patch.align : n.textAlignment };
-            })
-          }), true);
-        }}
+        onUpdateSelected={(patch) => { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => { if (n.id !== selectedNodeId) return n; return { ...n, backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor, fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize, textAlignment: patch.align !== undefined ? patch.align : n.textAlignment }; }) }), true); }}
         onDeleteSelected={handleDeleteSelected}
         onResetView={() => fitContentToScreen(activeTab.nodes)}
         onOpenMaps={() => setIsMapsOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
         onOpenTeam={() => setIsTeamOpen(true)}
-        isAdmin={profile?.role === 'admin'}
+        isAdmin={isUserAdminOrTeamOwner}
         user={user}
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={() => supabase.auth.signOut()}
@@ -673,7 +664,14 @@ export default function App() {
 
       <AuthModal isOpen={isAuthOpen} onClose={() => user && setIsAuthOpen(false)} onAuthSuccess={() => setIsAuthOpen(false)} />
       <ForcePasswordChangeModal isOpen={Boolean(profile?.must_change_password)} userId={user?.id} onSuccess={() => loadUserProfile(user?.id)} />
-      <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
+      
+      {/* PAINEL DE ADMIN LIGADO PARA ABRIR O MAPA DE UM USUÁRIO */}
+      <AdminPanel 
+        isOpen={isAdminOpen} 
+        onClose={() => setIsAdminOpen(false)} 
+        onSelectMap={(map) => handleSelectMap(map)} 
+      />
+      
       <TeamPanel isOpen={isTeamOpen} onClose={() => setIsTeamOpen(false)} profile={profile} onProfileUpdate={() => loadUserProfile(user?.id)} />
       <MapsManagerModal isOpen={isMapsOpen} onClose={() => setIsMapsOpen(false)} onSelectMap={handleSelectMap} userId={user?.id} />
     </div>
