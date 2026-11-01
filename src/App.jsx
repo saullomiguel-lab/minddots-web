@@ -39,13 +39,87 @@ export default function App() {
     setProfile(data || null);
   };
 
-  // 1. Sessão inicial e login ao abrir
+  const handleSelectMap = useCallback((map) => {
+    setCurrentMap(map);
+    const loadedTabs = map.data?.tabs || [
+      { id: 'tab-1', title: 'Mapa 1', nodes: [], connections: [] }
+    ];
+    setTabs(loadedTabs);
+    setActiveTabId(loadedTabs[0]?.id || 'tab-1');
+    setSelectedNodeId(null);
+    setTransform({ x: 0, y: 0, scale: 1 });
+  }, []);
+
+  // 1. Abre o mapa mais recente ou cria um novo se não houver nenhum
+  const loadRecentOrCreateMap = useCallback(async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('maps')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // Encontrou mapa existente: abre o mais recente
+        handleSelectMap(data[0]);
+      } else {
+        // Primeiro acesso: cria o primeiro mapa automaticamente
+        const newMapData = {
+          tabs: [
+            {
+              id: `tab-${Date.now()}`,
+              title: 'Mapa 1',
+              nodes: [
+                {
+                  id: `node-${Date.now()}`,
+                  x: 350,
+                  y: 220,
+                  width: 170,
+                  height: 75,
+                  text: '',
+                  backgroundColor: '#FFFFFF',
+                  textColor: '#1E293B',
+                  fontSize: 16,
+                  textAlignment: 'Center',
+                  imageData: null
+                }
+              ],
+              connections: []
+            }
+          ]
+        };
+
+        const { data: createdMap, error: createError } = await supabase
+          .from('maps')
+          .insert([
+            {
+              user_id: userId,
+              title: 'Meu Primeiro Mapa',
+              data: newMapData
+            }
+          ])
+          .select()
+          .single();
+
+        if (!createError && createdMap) {
+          handleSelectMap(createdMap);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao carregar mapa recente:', err);
+    }
+  }, [handleSelectMap]);
+
+  // 2. Monitoramento de Sessão: login ao entrar e carga direta do mapa
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
       if (session?.user) {
         loadUserProfile(session.user.id);
-        setIsMapsOpen(true);
+        loadRecentOrCreateMap(session.user.id);
       } else {
         setIsAuthOpen(true);
       }
@@ -55,6 +129,7 @@ export default function App() {
       setUser(session?.user || null);
       if (session?.user) {
         loadUserProfile(session.user.id);
+        loadRecentOrCreateMap(session.user.id);
       } else {
         setProfile(null);
         setCurrentMap(null);
@@ -64,13 +139,13 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadRecentOrCreateMap]);
 
-  // 2. Temporizador de 1 Hora de Inatividade
+  // 3. Temporizador de 1 Hora de Inatividade
   useEffect(() => {
     if (!user) return;
 
-    const ONE_HOUR = 60 * 60 * 1000; // 3.600.000 milissegundos
+    const ONE_HOUR = 60 * 60 * 1000;
     let inactivityTimer;
 
     const resetTimer = () => {
@@ -81,11 +156,10 @@ export default function App() {
       }, ONE_HOUR);
     };
 
-    // Monitora interações do usuário para reiniciar a contagem
     const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
     events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
 
-    resetTimer(); // Inicia a contagem de 1 hora
+    resetTimer();
 
     return () => {
       clearTimeout(inactivityTimer);
@@ -93,18 +167,7 @@ export default function App() {
     };
   }, [user]);
 
-  const handleSelectMap = (map) => {
-    setCurrentMap(map);
-    const loadedTabs = map.data?.tabs || [
-      { id: 'tab-1', title: 'Mapa 1', nodes: [], connections: [] }
-    ];
-    setTabs(loadedTabs);
-    setActiveTabId(loadedTabs[0]?.id || 'tab-1');
-    setSelectedNodeId(null);
-    setTransform({ x: 0, y: 0, scale: 1 });
-  };
-
-  // Auto-salvamento na nuvem
+  // 4. Auto-salvamento na nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -125,7 +188,7 @@ export default function App() {
     setTabs((prev) => prev.map((t) => (t.id === activeTabId ? updater(t) : t)));
   };
 
-  // Atalhos de teclado (P, Delete, Ctrl+C, Ctrl+V)
+  // Atalhos de Teclado (P, Delete, Ctrl+C, Ctrl+V)
   const handleResetView = useCallback(() => {
     if (!activeTab.nodes.length) {
       setTransform({ x: 0, y: 0, scale: 1 });
@@ -181,7 +244,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleResetView, handleDeleteSelected, activeTab, selectedNodeId, clipboardNode]);
 
-  // Zoom
+  // Zoom centrado no mouse
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -193,7 +256,7 @@ export default function App() {
     setTransform({ x: newX, y: newY, scale: newScale });
   };
 
-  // Duplo clique no vazio: cria nó imediatamente!
+  // Duplo clique no Canvas: cria nó no local do clique
   const handleDoubleClickCanvas = (e) => {
     if (e.target !== containerRef.current) return;
     const canvasX = (e.clientX - transform.x) / transform.scale;
@@ -283,7 +346,7 @@ export default function App() {
   };
 
   const handleMouseUp = () => {
-    // Soltar linha de conexão no vazio: cria nó conectado automaticamente!
+    // Soltar linha no vazio: cria nó conectado automaticamente
     if (connecting && !connecting.connected) {
       const newNode = {
         id: `node-${Date.now()}`,
