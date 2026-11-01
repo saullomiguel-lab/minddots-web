@@ -7,6 +7,7 @@ import ForcePasswordChangeModal from './components/ForcePasswordChangeModal';
 import AdminPanel from './components/AdminPanel';
 import MapsManagerModal from './components/MapsManagerModal';
 import { getPortPosition, getBezierPath } from './constants';
+import { exportMapToJpg, saveFileWithPicker } from './utils/exportHelper';
 import { supabase } from './supabaseClient';
 
 export default function App() {
@@ -503,7 +504,7 @@ export default function App() {
     }
   };
 
-  // INÍCIO DO ARRASTO DE UMA ALÇA DE LINHA EXISTENTE (Reconectar extremidade ou outro balão)
+  // Início do arrasto para reconectar alças de uma linha existente
   const handleStartReanchor = (e, conn, end) => {
     e.stopPropagation();
     setDraggingNode(null);
@@ -513,7 +514,6 @@ export default function App() {
     const canvasMouseY = (e.clientY - transform.y) / transform.scale;
 
     if (end === 'to') {
-      // Arrastando a ponta da seta (o destino)
       setConnecting({
         fromNodeId: conn.fromNodeId,
         fromPortIndex: conn.fromPortIndex,
@@ -523,7 +523,6 @@ export default function App() {
         reanchorEnd: 'to'
       });
     } else {
-      // Arrastando a base da seta (a origem)
       setConnecting({
         targetNodeId: conn.toNodeId,
         targetPortIndex: conn.toPortIndex,
@@ -592,12 +591,10 @@ export default function App() {
         pushToHistory(safeTabs);
       }
 
-      // SOLTOU A LINHA: Conexão ou Reconexão Inteligente
       if (connecting && !connecting.connected) {
         const dropX = connecting.currentX;
         const dropY = connecting.currentY;
 
-        // Se estávamos movendo a base da seta (a origem)
         if (connecting.reanchorEnd === 'from') {
           const originNode = activeTab.nodes.find((n) => {
             const w = n.width || 170;
@@ -633,7 +630,6 @@ export default function App() {
             pushToHistory(nextTabs);
           }
         } else {
-          // Movendo a ponta da seta (novo balão ou balão existente)
           const targetNode = activeTab.nodes.find((n) => {
             if (n.id === connecting.fromNodeId) return false;
             const w = n.width || 170;
@@ -642,7 +638,6 @@ export default function App() {
           });
 
           if (targetNode) {
-            // CONECTA NA EXTREMIDADE EXATA ONDE O CURSOR FOI SOLTO
             let bestPort = 0;
             let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => {
@@ -671,7 +666,6 @@ export default function App() {
             setTabs(nextTabs);
             pushToHistory(nextTabs);
           } else if (!connecting.replaceConnectionId) {
-            // Soltou no espaço livre: cria novo balão
             const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
             let bestToPort = 3;
             if (fromNode) {
@@ -757,12 +751,20 @@ export default function App() {
     });
   };
 
-  const handleExport = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(tabs, null, 2));
-    const a = document.createElement('a');
-    a.href = dataStr;
-    a.download = `minddots-${(currentMap?.title || 'mapa').toLowerCase().replace(/\s+/g, '-')}.json`;
-    a.click();
+  // 1. EXPORTAR IMAGEM (JPG EM ALTA RESOLUÇÃO) COM "SALVAR COMO..."
+  const handleExportImage = () => {
+    const title = currentMap?.title || activeTab?.title || 'mapa-mental';
+    exportMapToJpg(activeTab.nodes, activeTab.connections, title);
+  };
+
+  // 2. EXPORTAR ARQUIVO (JSON) COM "SALVAR COMO..."
+  const handleExportFile = async () => {
+    const title = (currentMap?.title || activeTab?.title || 'mapa-mental')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-');
+    const dataStr = JSON.stringify(tabs, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    await saveFileWithPicker(blob, `${title}.json`, 'application/json', 'json');
   };
 
   const selectedNode = activeTab.nodes.find((n) => n.id === selectedNodeId);
@@ -778,7 +780,8 @@ export default function App() {
     >
       <Toolbar
         onAddNode={handleAddNode}
-        onExport={handleExport}
+        onExportImage={handleExportImage}
+        onExportFile={handleExportFile}
         onAddImage={(img) => {
           if (selectedNodeId) {
             updateActiveTabData((t) => ({
@@ -846,7 +849,6 @@ export default function App() {
             const p2 = getPortPosition(toNode, conn.toPortIndex);
             const isConnSelected = selectedConnectionId === conn.id;
 
-            // Se esta conexão está sendo reancorada agora, oculta temporariamente a linha antiga
             if (connecting?.replaceConnectionId === conn.id) return null;
 
             return (
@@ -876,10 +878,9 @@ export default function App() {
                   }}
                 />
 
-                {/* ALÇAS INTERATIVAS QUANDO A LINHA ESTÁ SELECIONADA */}
+                {/* Alças Interativas ao Selecionar Linha */}
                 {isConnSelected && (
                   <>
-                    {/* Alça na ponta da seta (Permite puxar para outra extremidade ou outro balão) */}
                     <circle
                       cx={p2.x}
                       cy={p2.y}
@@ -892,7 +893,6 @@ export default function App() {
                       title="Arraste para mudar a extremidade ou ligar a outro balão"
                     />
 
-                    {/* Alça na base da linha */}
                     <circle
                       cx={p1.x}
                       cy={p1.y}
@@ -910,7 +910,6 @@ export default function App() {
             );
           })}
 
-          {/* Linha elástica em arraste */}
           {connecting && (
             <path
               d={
@@ -932,7 +931,7 @@ export default function App() {
               }
               fill="none"
               stroke="#2563EB"
-              strokeWidth={2.5}
+              strokeWidth="2.5"
               strokeDasharray="5,5"
               markerEnd="url(#arrow-drag)"
             />
