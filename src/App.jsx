@@ -263,7 +263,6 @@ export default function App() {
     }
   };
 
-  // Sincroniza a altura real medida pelo nó
   const handleHeightSync = (nodeId, actualHeight) => {
     setTabs((prev) =>
       prev.map((t) =>
@@ -277,18 +276,17 @@ export default function App() {
     );
   };
 
-  // SISTEMA INTELIGENTE DE COLAGEM COM CTRL + V: CRIA BALÃO COM IMAGEM OU TEXTO
+  // Colar com Ctrl + V: Cria balão automático com imagem ou texto
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
-      if (isInput) return; // Se estiver digitando em um campo de texto, deixa a digitação fluir normal
+      if (isInput) return;
 
       const clipboardData = e.clipboardData;
       if (!clipboardData) return;
 
       let foundImageFile = null;
 
-      // 1. Arquivo de Imagem direto
       if (clipboardData.files && clipboardData.files.length > 0) {
         for (let i = 0; i < clipboardData.files.length; i++) {
           if (clipboardData.files[i].type.startsWith('image/')) {
@@ -298,7 +296,6 @@ export default function App() {
         }
       }
 
-      // 2. Itens binários (print screen ou imagem copiada da internet)
       if (!foundImageFile && clipboardData.items) {
         for (let i = 0; i < clipboardData.items.length; i++) {
           if (clipboardData.items[i].type.startsWith('image/')) {
@@ -308,7 +305,6 @@ export default function App() {
         }
       }
 
-      // 3. Imagem em formato HTML (<img src="...">)
       let htmlImgSrc = null;
       if (!foundImageFile) {
         const html = clipboardData.getData('text/html');
@@ -320,7 +316,6 @@ export default function App() {
         }
       }
 
-      // 4. URL de imagem copiada
       const plainText = clipboardData.getData('text/plain') || '';
       let isImageUrl = false;
       if (!foundImageFile && !htmlImgSrc && plainText) {
@@ -364,7 +359,6 @@ export default function App() {
         return;
       }
 
-      // 5. Se for texto simples: Cria um novo balão com o texto
       if (plainText && plainText.trim()) {
         e.preventDefault();
         const newNode = {
@@ -390,9 +384,8 @@ export default function App() {
     return () => window.removeEventListener('paste', handleGlobalPaste);
   }, [safeTabs, activeTabId, transform]);
 
-  // Exclusão de Balão OU Linha de Conexão com Delete
+  // Exclusão por Delete
   const handleDeleteSelected = useCallback(() => {
-    // 1. Se uma conexão estiver selecionada, apaga somente a linha!
     if (selectedConnectionId) {
       updateActiveTabData((t) => ({
         ...t,
@@ -402,7 +395,6 @@ export default function App() {
       return;
     }
 
-    // 2. Se um nó estiver selecionado, apaga o balão e suas linhas
     if (selectedNodeId) {
       updateActiveTabData((t) => ({
         ...t,
@@ -511,6 +503,38 @@ export default function App() {
     }
   };
 
+  // INÍCIO DO ARRASTO DE UMA ALÇA DE LINHA EXISTENTE (Reconectar extremidade ou outro balão)
+  const handleStartReanchor = (e, conn, end) => {
+    e.stopPropagation();
+    setDraggingNode(null);
+    setResizingNode(null);
+
+    const canvasMouseX = (e.clientX - transform.x) / transform.scale;
+    const canvasMouseY = (e.clientY - transform.y) / transform.scale;
+
+    if (end === 'to') {
+      // Arrastando a ponta da seta (o destino)
+      setConnecting({
+        fromNodeId: conn.fromNodeId,
+        fromPortIndex: conn.fromPortIndex,
+        currentX: canvasMouseX,
+        currentY: canvasMouseY,
+        replaceConnectionId: conn.id,
+        reanchorEnd: 'to'
+      });
+    } else {
+      // Arrastando a base da seta (a origem)
+      setConnecting({
+        targetNodeId: conn.toNodeId,
+        targetPortIndex: conn.toPortIndex,
+        currentX: canvasMouseX,
+        currentY: canvasMouseY,
+        replaceConnectionId: conn.id,
+        reanchorEnd: 'from'
+      });
+    }
+  };
+
   // Monitoramento Global do Mouse
   useEffect(() => {
     const onWindowMouseMove = (e) => {
@@ -568,108 +592,135 @@ export default function App() {
         pushToHistory(safeTabs);
       }
 
-      // Soltou a linha: LIGA A UM BALÃO EXISTENTE OU CRIA UM NOVO
+      // SOLTOU A LINHA: Conexão ou Reconexão Inteligente
       if (connecting && !connecting.connected) {
         const dropX = connecting.currentX;
         const dropY = connecting.currentY;
 
-        // 1. Verifica se soltou dentro da área de um balão existente
-        const targetNode = activeTab.nodes.find((n) => {
-          if (n.id === connecting.fromNodeId) return false;
-          const w = n.width || 170;
-          const h = n.height || 75;
-          return dropX >= n.x && dropX <= n.x + w && dropY >= n.y && dropY <= n.y + h;
-        });
+        // Se estávamos movendo a base da seta (a origem)
+        if (connecting.reanchorEnd === 'from') {
+          const originNode = activeTab.nodes.find((n) => {
+            const w = n.width || 170;
+            const h = n.height || 75;
+            return dropX >= n.x - 15 && dropX <= n.x + w + 15 && dropY >= n.y - 15 && dropY <= n.y + h + 15;
+          });
 
-        if (targetNode) {
-          // Conecta diretamente ao balão existente!
-          const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
-          let bestToPort = 3;
-          if (fromNode) {
-            const fcx = fromNode.x + (fromNode.width || 170) / 2;
-            const fcy = fromNode.y + (fromNode.height || 75) / 2;
-            const tcx = targetNode.x + (targetNode.width || 170) / 2;
-            const tcy = targetNode.y + (targetNode.height || 75) / 2;
-            const dx = tcx - fcx;
-            const dy = tcy - fcy;
+          if (originNode && originNode.id !== connecting.targetNodeId) {
+            let bestPort = 0;
+            let minDist = Infinity;
+            [0, 1, 2, 3].forEach((pIdx) => {
+              const pos = getPortPosition(originNode, pIdx);
+              const d = Math.hypot(dropX - pos.x, dropY - pos.y);
+              if (d < minDist) {
+                minDist = d;
+                bestPort = pIdx;
+              }
+            });
 
-            if (Math.abs(dy) > Math.abs(dx)) {
-              bestToPort = dy > 0 ? 0 : 2;
-            } else {
-              bestToPort = dx > 0 ? 3 : 1;
-            }
-          }
-
-          const alreadyExists = activeTab.connections.some(
-            (c) =>
-              (c.fromNodeId === connecting.fromNodeId && c.toNodeId === targetNode.id) ||
-              (c.fromNodeId === targetNode.id && c.toNodeId === connecting.fromNodeId)
-          );
-
-          if (!alreadyExists) {
-            const newConn = {
-              id: `conn-${Date.now()}`,
-              fromNodeId: connecting.fromNodeId,
-              fromPortIndex: connecting.fromPortIndex,
-              toNodeId: targetNode.id,
-              toPortIndex: bestToPort
-            };
-            const nextTabs = safeTabs.map((t) =>
-              t.id === activeTabId ? { ...t, connections: [...t.connections, newConn] } : t
-            );
+            const nextTabs = safeTabs.map((t) => {
+              if (t.id !== activeTabId) return t;
+              const filtered = t.connections.filter((c) => c.id !== connecting.replaceConnectionId);
+              const newConn = {
+                id: `conn-${Date.now()}`,
+                fromNodeId: originNode.id,
+                fromPortIndex: bestPort,
+                toNodeId: connecting.targetNodeId,
+                toPortIndex: connecting.targetPortIndex
+              };
+              return { ...t, connections: [...filtered, newConn] };
+            });
             setTabs(nextTabs);
             pushToHistory(nextTabs);
           }
         } else {
-          // 2. Soltou no espaço vazio: Cria um novo balão conectado
-          const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
-          let bestToPort = 3;
-          if (fromNode) {
-            const parentCenterX = fromNode.x + (fromNode.width || 170) / 2;
-            const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
-            const dx = connecting.currentX - parentCenterX;
-            const dy = connecting.currentY - parentCenterY;
+          // Movendo a ponta da seta (novo balão ou balão existente)
+          const targetNode = activeTab.nodes.find((n) => {
+            if (n.id === connecting.fromNodeId) return false;
+            const w = n.width || 170;
+            const h = n.height || 75;
+            return dropX >= n.x - 15 && dropX <= n.x + w + 15 && dropY >= n.y - 15 && dropY <= n.y + h + 15;
+          });
 
-            if (Math.abs(dy) > Math.abs(dx)) {
-              bestToPort = dy > 0 ? 0 : 2;
-            } else {
-              bestToPort = dx > 0 ? 3 : 1;
+          if (targetNode) {
+            // CONECTA NA EXTREMIDADE EXATA ONDE O CURSOR FOI SOLTO
+            let bestPort = 0;
+            let minDist = Infinity;
+            [0, 1, 2, 3].forEach((pIdx) => {
+              const pos = getPortPosition(targetNode, pIdx);
+              const d = Math.hypot(dropX - pos.x, dropY - pos.y);
+              if (d < minDist) {
+                minDist = d;
+                bestPort = pIdx;
+              }
+            });
+
+            const nextTabs = safeTabs.map((t) => {
+              if (t.id !== activeTabId) return t;
+              const filtered = connecting.replaceConnectionId
+                ? t.connections.filter((c) => c.id !== connecting.replaceConnectionId)
+                : t.connections;
+              const newConn = {
+                id: `conn-${Date.now()}`,
+                fromNodeId: connecting.fromNodeId,
+                fromPortIndex: connecting.fromPortIndex,
+                toNodeId: targetNode.id,
+                toPortIndex: bestPort
+              };
+              return { ...t, connections: [...filtered, newConn] };
+            });
+            setTabs(nextTabs);
+            pushToHistory(nextTabs);
+          } else if (!connecting.replaceConnectionId) {
+            // Soltou no espaço livre: cria novo balão
+            const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
+            let bestToPort = 3;
+            if (fromNode) {
+              const parentCenterX = fromNode.x + (fromNode.width || 170) / 2;
+              const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
+              const dx = connecting.currentX - parentCenterX;
+              const dy = connecting.currentY - parentCenterY;
+
+              if (Math.abs(dy) > Math.abs(dx)) {
+                bestToPort = dy > 0 ? 0 : 2;
+              } else {
+                bestToPort = dx > 0 ? 3 : 1;
+              }
             }
+
+            const newNodeW = 170;
+            const newNodeH = 75;
+            const newNode = {
+              id: `node-${Date.now()}`,
+              x: connecting.currentX - newNodeW / 2,
+              y: connecting.currentY - newNodeH / 2,
+              width: newNodeW,
+              height: newNodeH,
+              text: '',
+              backgroundColor: '#FFFFFF',
+              textColor: '#1E293B',
+              fontSize: 14,
+              textAlignment: 'Left',
+              imageData: null
+            };
+
+            const newConn = {
+              id: `conn-${Date.now()}`,
+              fromNodeId: connecting.fromNodeId,
+              fromPortIndex: connecting.fromPortIndex,
+              toNodeId: newNode.id,
+              toPortIndex: bestToPort
+            };
+
+            const nextTabs = safeTabs.map((t) =>
+              t.id === activeTabId
+                ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] }
+                : t
+            );
+            setTabs(nextTabs);
+            pushToHistory(nextTabs);
+            setSelectedNodeId(newNode.id);
+            setSelectedConnectionId(null);
           }
-
-          const newNodeW = 170;
-          const newNodeH = 75;
-          const newNode = {
-            id: `node-${Date.now()}`,
-            x: connecting.currentX - newNodeW / 2,
-            y: connecting.currentY - newNodeH / 2,
-            width: newNodeW,
-            height: newNodeH,
-            text: '',
-            backgroundColor: '#FFFFFF',
-            textColor: '#1E293B',
-            fontSize: 14,
-            textAlignment: 'Left',
-            imageData: null
-          };
-
-          const newConn = {
-            id: `conn-${Date.now()}`,
-            fromNodeId: connecting.fromNodeId,
-            fromPortIndex: connecting.fromPortIndex,
-            toNodeId: newNode.id,
-            toPortIndex: bestToPort
-          };
-
-          const nextTabs = safeTabs.map((t) =>
-            t.id === activeTabId
-              ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] }
-              : t
-          );
-          setTabs(nextTabs);
-          pushToHistory(nextTabs);
-          setSelectedNodeId(newNode.id);
-          setSelectedConnectionId(null);
         }
       }
 
@@ -704,32 +755,6 @@ export default function App() {
       currentY: pos.y,
       connected: false
     });
-  };
-
-  const handlePortMouseUp = (e, toNodeId, toPortIndex) => {
-    if (connecting && connecting.fromNodeId !== toNodeId) {
-      const alreadyExists = activeTab.connections.some(
-        (c) =>
-          (c.fromNodeId === connecting.fromNodeId && c.toNodeId === toNodeId) ||
-          (c.fromNodeId === toNodeId && c.toNodeId === connecting.fromNodeId)
-      );
-
-      if (!alreadyExists) {
-        const newConn = {
-          id: `conn-${Date.now()}`,
-          fromNodeId: connecting.fromNodeId,
-          fromPortIndex: connecting.fromPortIndex,
-          toNodeId,
-          toPortIndex
-        };
-        const nextTabs = safeTabs.map((t) =>
-          t.id === activeTabId ? { ...t, connections: [...t.connections, newConn] } : t
-        );
-        setTabs(nextTabs);
-        pushToHistory(nextTabs);
-      }
-      setConnecting((prev) => ({ ...prev, connected: true }));
-    }
   };
 
   const handleExport = () => {
@@ -792,7 +817,7 @@ export default function App() {
         canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG Infinito com Setas Direcionais e Linhas Clicáveis */}
+      {/* SVG Infinito com Conexões e Alças de Reconexão */}
       <svg
         style={{
           position: 'absolute',
@@ -821,9 +846,12 @@ export default function App() {
             const p2 = getPortPosition(toNode, conn.toPortIndex);
             const isConnSelected = selectedConnectionId === conn.id;
 
+            // Se esta conexão está sendo reancorada agora, oculta temporariamente a linha antiga
+            if (connecting?.replaceConnectionId === conn.id) return null;
+
             return (
               <g key={conn.id}>
-                {/* Linha visível que se destaca quando clicada */}
+                {/* Linha visível */}
                 <path
                   d={getBezierPath(p1, p2)}
                   fill="none"
@@ -833,7 +861,8 @@ export default function App() {
                   markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'}
                   style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }}
                 />
-                {/* Área invisível ampla para facilitar o clique na linha */}
+
+                {/* Área ampla de clique */}
                 <path
                   d={getBezierPath(p1, p2)}
                   fill="none"
@@ -846,22 +875,64 @@ export default function App() {
                     setSelectedNodeId(null);
                   }}
                 />
+
+                {/* ALÇAS INTERATIVAS QUANDO A LINHA ESTÁ SELECIONADA */}
+                {isConnSelected && (
+                  <>
+                    {/* Alça na ponta da seta (Permite puxar para outra extremidade ou outro balão) */}
+                    <circle
+                      cx={p2.x}
+                      cy={p2.y}
+                      r={7.5}
+                      fill="#2563EB"
+                      stroke="#FFFFFF"
+                      strokeWidth={2}
+                      style={{ cursor: 'crosshair', pointerEvents: 'auto' }}
+                      onMouseDown={(e) => handleStartReanchor(e, conn, 'to')}
+                      title="Arraste para mudar a extremidade ou ligar a outro balão"
+                    />
+
+                    {/* Alça na base da linha */}
+                    <circle
+                      cx={p1.x}
+                      cy={p1.y}
+                      r={6.5}
+                      fill="#FFFFFF"
+                      stroke="#2563EB"
+                      strokeWidth={2}
+                      style={{ cursor: 'crosshair', pointerEvents: 'auto' }}
+                      onMouseDown={(e) => handleStartReanchor(e, conn, 'from')}
+                      title="Arraste para mudar a origem da linha"
+                    />
+                  </>
+                )}
               </g>
             );
           })}
 
+          {/* Linha elástica em arraste */}
           {connecting && (
             <path
-              d={getBezierPath(
-                getPortPosition(
-                  activeTab.nodes.find((n) => n.id === connecting.fromNodeId),
-                  connecting.fromPortIndex
-                ),
-                { x: connecting.currentX, y: connecting.currentY }
-              )}
+              d={
+                connecting.reanchorEnd === 'from'
+                  ? getBezierPath(
+                      { x: connecting.currentX, y: connecting.currentY },
+                      getPortPosition(
+                        activeTab.nodes.find((n) => n.id === connecting.targetNodeId),
+                        connecting.targetPortIndex
+                      )
+                    )
+                  : getBezierPath(
+                      getPortPosition(
+                        activeTab.nodes.find((n) => n.id === connecting.fromNodeId),
+                        connecting.fromPortIndex
+                      ),
+                      { x: connecting.currentX, y: connecting.currentY }
+                    )
+              }
               fill="none"
               stroke="#2563EB"
-              strokeWidth="2.5"
+              strokeWidth={2.5}
               strokeDasharray="5,5"
               markerEnd="url(#arrow-drag)"
             />
@@ -900,7 +971,6 @@ export default function App() {
                 });
               }}
               onPortMouseDown={handlePortMouseDown}
-              onPortMouseUp={handlePortMouseUp}
               onHeightChange={handleHeightSync}
               onResizeStart={(e, id, direction) => {
                 const targetNode = activeTab.nodes.find((n) => n.id === id);
