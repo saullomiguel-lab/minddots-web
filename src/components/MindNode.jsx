@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Plus } from 'lucide-react';
 
 export default function MindNode({
   node,
@@ -56,27 +57,43 @@ export default function MindNode({
     }
   };
 
+  // Leitura direta da área de transferência (sem popups)
   const handlePasteClick = async (e) => {
     e.stopPropagation();
     try {
-      const clipboardItems = await navigator.clipboard.read();
-      for (const item of clipboardItems) {
-        const imageType = item.types.find((t) => t.startsWith('image/'));
-        if (imageType) {
-          const blob = await item.getType(imageType);
-          const reader = new FileReader();
-          reader.onload = (evt) => onPaste(node.id, { imageData: evt.target.result });
-          reader.readAsDataURL(blob);
+      // 1. Tenta ler imagens ou conteúdos ricos
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find((t) => t.startsWith('image/'));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              onPaste(node.id, { imageData: evt.target.result });
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
+
+      // 2. Se não houver imagem, lê o texto direto
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text });
           return;
         }
       }
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        onPaste(node.id, { text: (node.text ? node.text + ' ' : '') + text });
+    } catch (err) {
+      // Fallback secundário seguro para texto direto
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text });
+      } catch {
+        console.warn('Permissão de colagem bloqueada pelo navegador.');
       }
-    } catch {
-      const text = prompt('Cole seu texto aqui:');
-      if (text) onPaste(node.id, { text: (node.text ? node.text + ' ' : '') + text });
     }
   };
 
@@ -105,7 +122,6 @@ export default function MindNode({
         zIndex: isSelected ? 20 : 5
       }}
       onMouseDown={(e) => {
-        // Apenas arrasta se o clique foi com botão esquerdo e não estiver editando
         if (e.button === 0 && !isEditing) {
           onSelect(e, node.id);
           onStartDrag(e, node.id);
@@ -113,7 +129,7 @@ export default function MindNode({
       }}
       onDoubleClick={handleDoubleClick}
     >
-      {/* Botão Flutuante 📋 Colar */}
+      {/* Botão Flutuante 📋 Colar Direto */}
       {isSelected && !isEditing && (
         <button
           onClick={handlePasteClick}
@@ -121,13 +137,13 @@ export default function MindNode({
           title="Colar texto ou imagem da área de transferência"
           style={{
             position: 'absolute',
-            top: '-24px',
+            top: '-26px',
             left: '0px',
             background: '#1E293B',
             color: '#FFFFFF',
             border: 'none',
-            borderRadius: '5px',
-            padding: '2px 8px',
+            borderRadius: '6px',
+            padding: '3px 9px',
             fontSize: '11px',
             fontWeight: 600,
             cursor: 'pointer',
@@ -135,21 +151,21 @@ export default function MindNode({
             alignItems: 'center',
             gap: '4px',
             boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-            zIndex: 30
+            zIndex: 35
           }}
         >
           📋 Colar
         </button>
       )}
 
-      {/* 4 Portas Conectoras Externas com bloqueio total de clique */}
+      {/* 4 Portas Conectoras: Bolinhas azuis com um "+" branco no meio */}
       {isSelected &&
         [0, 1, 2, 3].map((portIdx) => {
           const positions = [
-            { top: '-13px', left: '50%', transform: 'translateX(-50%)' },
-            { right: '-13px', top: '50%', transform: 'translateY(-50%)' },
-            { bottom: '-13px', left: '50%', transform: 'translateX(-50%)' },
-            { left: '-13px', top: '50%', transform: 'translateY(-50%)' }
+            { top: '-11px', left: '50%', transform: 'translateX(-50%)' },
+            { right: '-11px', top: '50%', transform: 'translateY(-50%)' },
+            { bottom: '-11px', left: '50%', transform: 'translateX(-50%)' },
+            { left: '-11px', top: '50%', transform: 'translateY(-50%)' }
           ];
           return (
             <div
@@ -157,8 +173,8 @@ export default function MindNode({
               style={{
                 position: 'absolute',
                 ...positions[portIdx],
-                width: '26px',
-                height: '26px',
+                width: '28px',
+                height: '28px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -166,52 +182,75 @@ export default function MindNode({
                 zIndex: 40
               }}
               onMouseDown={(e) => {
-                e.stopPropagation(); // Impede o balão de achar que está sendo arrastado
+                e.stopPropagation();
                 onPortMouseDown(e, node.id, portIdx);
               }}
               onMouseUp={(e) => {
                 e.stopPropagation();
                 onPortMouseUp(e, node.id, portIdx);
               }}
+              title="Puxe para criar um novo balão"
             >
               <div
                 style={{
-                  width: '10px',
-                  height: '10px',
+                  width: '16px',
+                  height: '16px',
                   borderRadius: '50%',
-                  backgroundColor: '#3B82F6',
+                  backgroundColor: '#2563EB',
                   border: '1.5px solid #FFFFFF',
-                  boxShadow: '0 0 0 1px #2563EB',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   pointerEvents: 'none'
                 }}
-              />
+              >
+                <Plus size={10} color="#FFFFFF" strokeWidth={3.5} />
+              </div>
             </div>
           );
         })}
 
-      {/* Alça de Redimensionamento Manual */}
+      {/* Redimensionamento em QUALQUER PARTE DA LINHA / BORDA quando selecionado */}
       {isSelected && (
-        <div
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            onResizeStart(e, node.id);
-          }}
-          style={{
-            position: 'absolute',
-            right: '4px',
-            bottom: '4px',
-            width: '10px',
-            height: '10px',
-            backgroundColor: '#2563EB',
-            borderRadius: '2px',
-            cursor: 'nwse-resize',
-            zIndex: 35
-          }}
-          title="Arrastar para redimensionar"
-        />
+        <>
+          {/* Borda Direita */}
+          <div
+            onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'right'); }}
+            style={{ position: 'absolute', top: '8px', bottom: '8px', right: '-4px', width: '8px', cursor: 'ew-resize', zIndex: 30 }}
+            title="Arraste a linha para redimensionar"
+          />
+          {/* Borda Esquerda */}
+          <div
+            onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'left'); }}
+            style={{ position: 'absolute', top: '8px', bottom: '8px', left: '-4px', width: '8px', cursor: 'ew-resize', zIndex: 30 }}
+            title="Arraste a linha para redimensionar"
+          />
+          {/* Borda Inferior */}
+          <div
+            onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom'); }}
+            style={{ position: 'absolute', left: '8px', right: '8px', bottom: '-4px', height: '8px', cursor: 'ns-resize', zIndex: 30 }}
+            title="Arraste a linha para redimensionar"
+          />
+          {/* Borda Superior */}
+          <div
+            onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'top'); }}
+            style={{ position: 'absolute', left: '8px', right: '8px', top: '-4px', height: '8px', cursor: 'ns-resize', zIndex: 30 }}
+            title="Arraste a linha para redimensionar"
+          />
+          {/* Cantos */}
+          <div
+            onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom-right'); }}
+            style={{ position: 'absolute', right: '-4px', bottom: '-4px', width: '12px', height: '12px', cursor: 'nwse-resize', zIndex: 32 }}
+          />
+          <div
+            onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e, node.id, 'bottom-left'); }}
+            style={{ position: 'absolute', left: '-4px', bottom: '-4px', width: '12px', height: '12px', cursor: 'nesw-resize', zIndex: 32 }}
+          />
+        </>
       )}
 
-      {/* Imagem */}
+      {/* Imagem (Preservando Proporção Real) */}
       {hasImage && (
         <img
           src={node.imageData}
@@ -219,16 +258,17 @@ export default function MindNode({
           style={{
             width: '100%',
             height: 'auto',
-            maxHeight: '220px',
+            maxHeight: '260px',
             objectFit: 'contain',
             borderRadius: '6px',
             marginBottom: hasText || isEditing ? '8px' : '0px',
-            display: 'block'
+            display: 'block',
+            pointerEvents: 'none'
           }}
         />
       )}
 
-      {/* Editor de Texto In-Place */}
+      {/* Editor de Texto In-Place (Abaixo da Imagem) */}
       {isEditing ? (
         <textarea
           ref={editorRef}
