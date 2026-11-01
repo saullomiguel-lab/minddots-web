@@ -23,7 +23,7 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [clipboardNode, setClipboardNode] = useState(null);
 
-  // Histórico de Desfazer (Ctrl+Z) e Refazer (Ctrl+Y)
+  // Histórico Blindado contra Tela Branca
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -32,7 +32,7 @@ export default function App() {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Arrastos e Redimensionamentos
+  // Arrastos e Redimensionamentos Multidirecionais
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
   const [connecting, setConnecting] = useState(null);
@@ -43,7 +43,7 @@ export default function App() {
     setProfile(data || null);
   };
 
-  // Encaixa 100% do mapa na tela calculando o tamanho real das ideias (Fit to Screen)
+  // Encaixe 100% na Tela (Fit to Screen)
   const fitContentToScreen = useCallback((nodes) => {
     if (!nodes || nodes.length === 0) {
       setTransform({ x: 0, y: 0, scale: 1 });
@@ -66,7 +66,7 @@ export default function App() {
     const contentH = Math.max(maxY - minY, 80);
 
     const availableW = window.innerWidth - padding * 2;
-    const availableH = window.innerHeight - padding * 2 - 60; // respiro para as barras
+    const availableH = window.innerHeight - padding * 2 - 60;
 
     const scaleX = availableW / contentW;
     const scaleY = availableH / contentH;
@@ -91,38 +91,45 @@ export default function App() {
     setActiveTabId(loadedTabs[0]?.id || 'tab-1');
     setSelectedNodeId(null);
 
-    setHistory([loadedTabs]);
+    setHistory([JSON.parse(JSON.stringify(loadedTabs))]);
     setHistoryIndex(0);
 
-    // Encaixa o mapa completo na tela automaticamente ao abrir
     fitContentToScreen(loadedTabs[0]?.nodes || []);
   }, [fitContentToScreen]);
 
+  // Registro Seguro no Histórico (sem side-effects)
   const pushToHistory = useCallback((newTabs) => {
+    if (!newTabs || !Array.isArray(newTabs)) return;
     setHistory((prev) => {
       const currentBranch = prev.slice(0, historyIndex + 1);
-      return [...currentBranch, newTabs];
+      return [...currentBranch, JSON.parse(JSON.stringify(newTabs))];
     });
     setHistoryIndex((prev) => prev + 1);
   }, [historyIndex]);
 
+  // Desfazer Seguro
   const handleUndo = useCallback(() => {
-    if (historyIndex > 0) {
+    if (historyIndex > 0 && history[historyIndex - 1]) {
       const newIdx = historyIndex - 1;
-      setTabs(history[newIdx]);
+      const restored = JSON.parse(JSON.stringify(history[newIdx]));
+      setTabs(restored);
       setHistoryIndex(newIdx);
+      setSelectedNodeId(null);
     }
   }, [history, historyIndex]);
 
+  // Refazer Seguro
   const handleRedo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
+    if (historyIndex < history.length - 1 && history[historyIndex + 1]) {
       const newIdx = historyIndex + 1;
-      setTabs(history[newIdx]);
+      const restored = JSON.parse(JSON.stringify(history[newIdx]));
+      setTabs(restored);
       setHistoryIndex(newIdx);
+      setSelectedNodeId(null);
     }
   }, [history, historyIndex]);
 
-  // Carrega mapa recente ou cria novo
+  // Sessão e Login Direto
   const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -177,7 +184,6 @@ export default function App() {
     }
   }, [handleSelectMap]);
 
-  // Sessão e Login
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
@@ -205,7 +211,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
-  // Logout por 1 hora de inatividade
+  // Logout por Inatividade (1 hora)
   useEffect(() => {
     if (!user) return;
     const ONE_HOUR = 60 * 60 * 1000;
@@ -245,17 +251,59 @@ export default function App() {
     return () => clearTimeout(saveTimer);
   }, [tabs, currentMap, user]);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0] || { nodes: [], connections: [] };
+  const safeTabs = Array.isArray(tabs) ? tabs : [];
+  const activeTab = safeTabs.find((t) => t.id === activeTabId) || safeTabs[0] || { nodes: [], connections: [] };
 
   const updateActiveTabData = (updater, recordHistory = false) => {
-    setTabs((prev) => {
-      const nextTabs = prev.map((t) => (t.id === activeTabId ? updater(t) : t));
-      if (recordHistory) pushToHistory(nextTabs);
-      return nextTabs;
-    });
+    const nextTabs = safeTabs.map((t) => (t.id === activeTabId ? updater(t) : t));
+    setTabs(nextTabs);
+    if (recordHistory) {
+      pushToHistory(nextTabs);
+    }
   };
 
-  // Atalhos de Teclado (ESC, P, Delete, Ctrl+Z, Ctrl+Y, Ctrl+C, Ctrl+V)
+  // Suporte Global a Colar Imagens e Textos com Ctrl+V
+  useEffect(() => {
+    const handleGlobalPaste = (e) => {
+      const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
+      if (isInput || !selectedNodeId) return;
+
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            const blob = items[i].getAsFile();
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              updateActiveTabData((t) => ({
+                ...t,
+                nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: evt.target.result } : n))
+              }), true);
+            };
+            reader.readAsDataURL(blob);
+            e.preventDefault();
+            return;
+          }
+        }
+      }
+
+      const text = e.clipboardData?.getData('text');
+      if (text) {
+        updateActiveTabData((t) => ({
+          ...t,
+          nodes: t.nodes.map((n) =>
+            n.id === selectedNodeId ? { ...n, text: (n.text ? n.text + '\n' : '') + text } : n
+          )
+        }), true);
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, [selectedNodeId, safeTabs, activeTabId]);
+
+  // Atalhos de Teclado
   const handleDeleteSelected = useCallback(() => {
     if (!selectedNodeId) return;
     updateActiveTabData((t) => ({
@@ -266,7 +314,7 @@ export default function App() {
       )
     }), true);
     setSelectedNodeId(null);
-  }, [selectedNodeId, activeTabId]);
+  }, [selectedNodeId, safeTabs, activeTabId]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -274,7 +322,7 @@ export default function App() {
       if (isInput) return;
 
       if (e.key === 'Escape') {
-        setSelectedNodeId(null); // Tecla ESC para desselecionar
+        setSelectedNodeId(null);
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         if (e.shiftKey) handleRedo();
@@ -289,24 +337,13 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
         const nodeToCopy = activeTab.nodes.find((n) => n.id === selectedNodeId);
         if (nodeToCopy) setClipboardNode({ ...nodeToCopy });
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
-        if (clipboardNode) {
-          const newNode = {
-            ...clipboardNode,
-            id: `node-${Date.now()}`,
-            x: clipboardNode.x + 40,
-            y: clipboardNode.y + 40
-          };
-          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
-          setSelectedNodeId(newNode.id);
-        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, clipboardNode]);
 
-  // Zoom centrado no mouse
+  // Zoom
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -318,7 +355,6 @@ export default function App() {
     setTransform({ x: newX, y: newY, scale: newScale });
   };
 
-  // Duplo clique no Canvas
   const handleDoubleClickCanvas = (e) => {
     if (e.target !== containerRef.current) return;
     const canvasX = (e.clientX - transform.x) / transform.scale;
@@ -360,7 +396,6 @@ export default function App() {
     setSelectedNodeId(newNode.id);
   };
 
-  // Iniciar Pan
   const handleMouseDown = (e) => {
     if (e.target === containerRef.current || e.button === 1 || e.button === 2) {
       setIsPanning(true);
@@ -369,7 +404,7 @@ export default function App() {
     }
   };
 
-  // MONITORAMENTO GLOBAL DO MOUSE (Window): nunca perde o movimento nem a soltura do clique
+  // Monitoramento Global do Mouse: Suporte ao Redimensionamento por Qualquer Linha
   useEffect(() => {
     const onWindowMouseMove = (e) => {
       if (isPanning) {
@@ -390,16 +425,28 @@ export default function App() {
       } else if (resizingNode) {
         const dx = (e.clientX - resizingNode.startX) / transform.scale;
         const dy = (e.clientY - resizingNode.startY) / transform.scale;
+        const dir = resizingNode.direction;
+
+        let newW = resizingNode.origW;
+        let newH = resizingNode.origH;
+        let newX = resizingNode.origX;
+        let newY = resizingNode.origY;
+
+        if (dir.includes('right')) newW = Math.max(120, resizingNode.origW + dx);
+        if (dir.includes('left')) {
+          newW = Math.max(120, resizingNode.origW - dx);
+          newX = resizingNode.origX + (resizingNode.origW - newW);
+        }
+        if (dir.includes('bottom')) newH = Math.max(60, resizingNode.origH + dy);
+        if (dir.includes('top')) {
+          newH = Math.max(60, resizingNode.origH - dy);
+          newY = resizingNode.origY + (resizingNode.origH - newH);
+        }
+
         updateActiveTabData((t) => ({
           ...t,
           nodes: t.nodes.map((n) =>
-            n.id === resizingNode.id
-              ? {
-                  ...n,
-                  width: Math.max(120, resizingNode.origW + dx),
-                  height: Math.max(60, resizingNode.origH + dy)
-                }
-              : n
+            n.id === resizingNode.id ? { ...n, x: newX, y: newY, width: newW, height: newH } : n
           )
         }));
       } else if (connecting) {
@@ -411,10 +458,9 @@ export default function App() {
 
     const onWindowMouseUp = () => {
       if (draggingNode || resizingNode) {
-        pushToHistory(tabs);
+        pushToHistory(safeTabs);
       }
 
-      // Soltou linha no vazio: cria nó com conexão inteligente apontando de frente
       if (connecting && !connecting.connected) {
         const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
         if (fromNode) {
@@ -423,12 +469,11 @@ export default function App() {
           const dx = connecting.currentX - parentCenterX;
           const dy = connecting.currentY - parentCenterY;
 
-          // Escolhe automaticamente a porta de entrada com base no ângulo de soltura
           let bestToPort = 3;
           if (Math.abs(dy) > Math.abs(dx)) {
-            bestToPort = dy > 0 ? 0 : 2; // se soltou abaixo, entra no Topo (0); se soltou acima, entra na Base (2)
+            bestToPort = dy > 0 ? 0 : 2;
           } else {
-            bestToPort = dx > 0 ? 3 : 1; // se soltou à direita, entra na Esquerda (3); se à esquerda, entra na Direita (1)
+            bestToPort = dx > 0 ? 3 : 1;
           }
 
           const newNodeW = 170;
@@ -455,7 +500,7 @@ export default function App() {
             toPortIndex: bestToPort
           };
 
-          const nextTabs = tabs.map((t) =>
+          const nextTabs = safeTabs.map((t) =>
             t.id === activeTabId
               ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] }
               : t
@@ -481,10 +526,9 @@ export default function App() {
       window.removeEventListener('mousemove', onWindowMouseMove);
       window.removeEventListener('mouseup', onWindowMouseUp);
     };
-  }, [isPanning, draggingNode, resizingNode, connecting, transform, tabs, activeTab, activeTabId, pushToHistory]);
+  }, [isPanning, draggingNode, resizingNode, connecting, transform, safeTabs, activeTab, activeTabId, pushToHistory]);
 
   const handlePortMouseDown = (e, nodeId, portIndex) => {
-    // Cancela qualquer arraste de balão ao tocar na porta
     setDraggingNode(null);
     setResizingNode(null);
 
@@ -515,7 +559,7 @@ export default function App() {
           toNodeId,
           toPortIndex
         };
-        const nextTabs = tabs.map((t) =>
+        const nextTabs = safeTabs.map((t) =>
           t.id === activeTabId ? { ...t, connections: [...t.connections, newConn] } : t
         );
         setTabs(nextTabs);
@@ -644,7 +688,7 @@ export default function App() {
         </g>
       </svg>
 
-      {/* Camada Infinita dos Balões */}
+      {/* Camada dos Balões */}
       <div
         style={{
           position: 'absolute',
@@ -675,13 +719,18 @@ export default function App() {
               }}
               onPortMouseDown={handlePortMouseDown}
               onPortMouseUp={handlePortMouseUp}
-              onResizeStart={(e, id) => {
+              onResizeStart={(e, id, direction) => {
+                const targetNode = activeTab.nodes.find((n) => n.id === id);
+                if (!targetNode) return;
                 setResizingNode({
                   id,
+                  direction,
                   startX: e.clientX,
                   startY: e.clientY,
-                  origW: node.width || 170,
-                  origH: node.height || 75
+                  origX: targetNode.x,
+                  origY: targetNode.y,
+                  origW: targetNode.width || 170,
+                  origH: targetNode.height || 75
                 });
               }}
               onUpdateText={(id, text) => {
@@ -703,7 +752,7 @@ export default function App() {
 
       {currentMap && (
         <TabsBar
-          tabs={tabs}
+          tabs={safeTabs}
           activeTabId={activeTabId}
           onSelectTab={(id) => {
             setActiveTabId(id);
@@ -713,7 +762,7 @@ export default function App() {
             const newId = `tab-${Date.now()}`;
             const newTab = {
               id: newId,
-              title: `Mapa ${tabs.length + 1}`,
+              title: `Mapa ${safeTabs.length + 1}`,
               nodes: [
                 {
                   id: `node-${Date.now()}`,
@@ -731,13 +780,13 @@ export default function App() {
               ],
               connections: []
             };
-            const nextTabs = [...tabs, newTab];
+            const nextTabs = [...safeTabs, newTab];
             setTabs(nextTabs);
             pushToHistory(nextTabs);
             setActiveTabId(newId);
           }}
           onRenameTab={(id, title) => {
-            const nextTabs = tabs.map((t) => (t.id === id ? { ...t, title } : t));
+            const nextTabs = safeTabs.map((t) => (t.id === id ? { ...t, title } : t));
             setTabs(nextTabs);
             pushToHistory(nextTabs);
           }}
