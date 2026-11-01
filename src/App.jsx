@@ -563,9 +563,9 @@ export default function App() {
     }
   };
 
-  // Reconexão de Linhas
+  // Reconexão de Linhas (Inicia o arraste da ponta ou da base)
   const handleStartReanchor = (e, conn, end) => {
-    e.stopPropagation();
+    if (e.stopPropagation) e.stopPropagation();
     setDraggingNode(null);
     setResizingNode(null);
 
@@ -593,7 +593,7 @@ export default function App() {
     }
   };
 
-  // MONITORAMENTO UNIFICADO: MOUSE NO PC E TOUCH NO CELULAR
+  // MONITORAMENTO UNIFICADO (Mouse no PC e Touch no Celular)
   useEffect(() => {
     const onPointerMove = (clientX, clientY) => {
       if (isPanning) {
@@ -650,7 +650,6 @@ export default function App() {
         pushToHistory(safeTabs);
       }
 
-      // Soltou a linha: Conecta ao balão existente ou cria novo balão
       if (connecting && !connecting.connected) {
         const dropX = connecting.currentX;
         const dropY = connecting.currentY;
@@ -659,7 +658,7 @@ export default function App() {
           const originNode = activeTab.nodes.find((n) => {
             const w = n.width || 170;
             const h = n.height || 75;
-            return dropX >= n.x - 20 && dropX <= n.x + w + 20 && dropY >= n.y - 20 && dropY <= n.y + h + 20;
+            return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24;
           });
 
           if (originNode && originNode.id !== connecting.targetNodeId) {
@@ -690,16 +689,15 @@ export default function App() {
             pushToHistory(nextTabs);
           }
         } else {
-          // Soltou a ponta da seta
+          // Soltou a ponta da seta (muda de extremidade ou conecta a outro balão)
           const targetNode = activeTab.nodes.find((n) => {
             if (n.id === connecting.fromNodeId) return false;
             const w = n.width || 170;
             const h = n.height || 75;
-            return dropX >= n.x - 20 && dropX <= n.x + w + 20 && dropY >= n.y - 20 && dropY <= n.y + h + 20;
+            return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24;
           });
 
           if (targetNode) {
-            // Conecta na extremidade mais próxima onde o dedo soltou
             let bestPort = 0;
             let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => {
@@ -728,7 +726,6 @@ export default function App() {
             setTabs(nextTabs);
             pushToHistory(nextTabs);
           } else if (!connecting.replaceConnectionId) {
-            // Soltou no vazio: cria nova ideia conectada
             const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
             let bestToPort = 3;
             if (fromNode) {
@@ -787,17 +784,15 @@ export default function App() {
       setConnecting(null);
     };
 
-    // Eventos de Mouse (Desktop)
     const onWindowMouseMove = (e) => onPointerMove(e.clientX, e.clientY);
     const onWindowMouseUp = () => onPointerUp();
 
-    // Eventos Touch (Celulares e Tablets)
     const onWindowTouchMove = (e) => {
       if (e.touches && e.touches.length > 0) {
         const touch = e.touches[0];
         onPointerMove(touch.clientX, touch.clientY);
         if (draggingNode || connecting || resizingNode) {
-          e.preventDefault(); // Impede rolagem do navegador enquanto arrasta balão ou puxa linha
+          if (e.cancelable) e.preventDefault();
         }
       }
     };
@@ -904,7 +899,7 @@ export default function App() {
         canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG com Conexões */}
+      {/* SVG com Conexões e Alças de Toque Ampliadas */}
       <svg
         style={{
           position: 'absolute',
@@ -937,6 +932,7 @@ export default function App() {
 
             return (
               <g key={conn.id}>
+                {/* Linha visível */}
                 <path
                   d={getBezierPath(p1, p2)}
                   fill="none"
@@ -947,52 +943,85 @@ export default function App() {
                   style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }}
                 />
 
+                {/* Área ampla de toque invisível (30px) para dedos no celular e mouse no PC */}
                 <path
                   d={getBezierPath(p1, p2)}
                   fill="none"
                   stroke="transparent"
-                  strokeWidth={16}
-                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  strokeWidth={30}
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer', touchAction: 'none' }}
                   onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedConnectionId(conn.id);
+                    setSelectedNodeId(null);
+                  }}
+                  onTouchStart={(e) => {
                     e.stopPropagation();
                     setSelectedConnectionId(conn.id);
                     setSelectedNodeId(null);
                   }}
                 />
 
+                {/* Alças Ampliadas para Toque com o Dedo quando a linha é selecionada */}
                 {isConnSelected && (
                   <>
-                    <circle
-                      cx={p2.x}
-                      cy={p2.y}
-                      r={7.5}
-                      fill="#2563EB"
-                      stroke="#FFFFFF"
-                      strokeWidth={2}
-                      style={{ cursor: 'crosshair', pointerEvents: 'auto' }}
-                      onMouseDown={(e) => handleStartReanchor(e, conn, 'to')}
-                      onTouchStart={(e) => {
-                        const t = e.touches[0];
-                        handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'to');
-                      }}
-                      title="Arraste para mudar extremidade ou balão"
-                    />
+                    {/* Alça na ponta da seta (Target) */}
+                    <g>
+                      {/* Área invisível grande para o polegar (48px de toque) */}
+                      <circle
+                        cx={p2.x}
+                        cy={p2.y}
+                        r={24}
+                        fill="transparent"
+                        style={{ cursor: 'crosshair', pointerEvents: 'auto', touchAction: 'none' }}
+                        onMouseDown={(e) => handleStartReanchor(e, conn, 'to')}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          if (e.cancelable) e.preventDefault();
+                          const t = e.touches[0];
+                          handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'to');
+                        }}
+                      />
+                      {/* Bolinha visual azul */}
+                      <circle
+                        cx={p2.x}
+                        cy={p2.y}
+                        r={8}
+                        fill="#2563EB"
+                        stroke="#FFFFFF"
+                        strokeWidth={2.5}
+                        pointerEvents="none"
+                      />
+                    </g>
 
-                    <circle
-                      cx={p1.x}
-                      cy={p1.y}
-                      r={6.5}
-                      fill="#FFFFFF"
-                      stroke="#2563EB"
-                      strokeWidth={2}
-                      style={{ cursor: 'crosshair', pointerEvents: 'auto' }}
-                      onMouseDown={(e) => handleStartReanchor(e, conn, 'from')}
-                      onTouchStart={(e) => {
-                        const t = e.touches[0];
-                        handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'from');
-                      }}
-                      title="Arraste para mudar a origem da linha"
-                    />
+                    {/* Alça na base da seta (Origin) */}
+                    <g>
+                      {/* Área invisível grande para o polegar (48px de toque) */}
+                      <circle
+                        cx={p1.x}
+                        cy={p1.y}
+                        r={24}
+                        fill="transparent"
+                        style={{ cursor: 'crosshair', pointerEvents: 'auto', touchAction: 'none' }}
+                        onMouseDown={(e) => handleStartReanchor(e, conn, 'from')}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          if (e.cancelable) e.preventDefault();
+                          const t = e.touches[0];
+                          handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'from');
+                        }}
+                      />
+                      {/* Bolinha visual branca com borda azul */}
+                      <circle
+                        cx={p1.x}
+                        cy={p1.y}
+                        r={7}
+                        fill="#FFFFFF"
+                        stroke="#2563EB"
+                        strokeWidth={2.5}
+                        pointerEvents="none"
+                      />
+                    </g>
                   </>
                 )}
               </g>
