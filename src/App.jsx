@@ -39,7 +39,7 @@ export default function App() {
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
   const [connecting, setConnecting] = useState(null);
-  const [draggingCP, setDraggingCP] = useState(null); // ESTADO PARA ARRASTAR A CURVATURA DA SETA
+  const [draggingCP, setDraggingCP] = useState(null); 
   const containerRef = useRef(null);
 
   const loadUserProfile = async (userId) => {
@@ -208,6 +208,25 @@ export default function App() {
     }
   }, [selectedConnectionId, selectedNodeId, safeTabs, activeTabId]);
 
+  // NOVO: Exclusão de Aba Segura
+  const handleDeleteTab = useCallback((tabId) => {
+    if (safeTabs.length <= 1) {
+      alert('Você não pode excluir a última aba do mapa.');
+      return;
+    }
+    const tabToDel = safeTabs.find(t => t.id === tabId);
+    if (!window.confirm(`Tem certeza que deseja excluir a aba "${tabToDel?.title || 'Selecionada'}" e todo o seu conteúdo?`)) return;
+    
+    const nextTabs = safeTabs.filter(t => t.id !== tabId);
+    setTabs(nextTabs);
+    pushToHistory(nextTabs);
+    
+    if (activeTabId === tabId) {
+      setActiveTabId(nextTabs[0].id);
+      fitContentToScreen(nextTabs[0].nodes);
+    }
+  }, [safeTabs, activeTabId, pushToHistory, fitContentToScreen]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
@@ -223,7 +242,12 @@ export default function App() {
       } else if (e.key === 'p' || e.key === 'P') {
         fitContentToScreen(activeTab.nodes);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        handleDeleteSelected();
+        // Se tem nó ou linha selecionada, apaga eles. Senão, pergunta se quer apagar a Aba Ativa!
+        if (selectedNodeId || selectedConnectionId) {
+          handleDeleteSelected();
+        } else {
+          handleDeleteTab(activeTabId);
+        }
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
         const nodeToCopy = activeTab.nodes.find((n) => n.id === selectedNodeId);
         if (nodeToCopy) setClipboardNode({ ...nodeToCopy });
@@ -231,7 +255,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [connecting, fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, selectedConnectionId, clipboardNode]);
+  }, [connecting, fitContentToScreen, handleDeleteSelected, handleDeleteTab, handleUndo, handleRedo, activeTab, selectedNodeId, selectedConnectionId, clipboardNode, activeTabId]);
 
   const handleWheel = (e) => {
     e.preventDefault();
@@ -303,7 +327,6 @@ export default function App() {
     else setConnecting({ targetNodeId: conn.toNodeId, targetPortIndex: conn.toPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'from' });
   };
 
-  // INÍCIO: ARRASTO DOS PONTOS DE CONTROLE DA CURVATURA (BOLINHAS BRANCAS)
   const handleStartDragCP = (e, conn, cpIndex) => {
     if (e.stopPropagation) e.stopPropagation();
     setDraggingNode(null); setResizingNode(null); setConnecting(null);
@@ -312,10 +335,7 @@ export default function App() {
 
   const handleResetCurve = (e, connId) => {
     if (e.stopPropagation) e.stopPropagation();
-    updateActiveTabData((t) => ({
-      ...t,
-      connections: t.connections.map((c) => c.id === connId ? { ...c, cp1Offset: null, cp2Offset: null } : c)
-    }), true);
+    updateActiveTabData((t) => ({ ...t, connections: t.connections.map((c) => c.id === connId ? { ...c, cp1Offset: null, cp2Offset: null } : c) }), true);
   };
 
   useEffect(() => {
@@ -337,36 +357,16 @@ export default function App() {
         const canvasMouseX = (clientX - transform.x) / transform.scale; const canvasMouseY = (clientY - transform.y) / transform.scale;
         setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
       } else if (draggingCP) {
-        // ATUALIZA A CURVATURA EM TEMPO REAL AO ARRASTAR A BOLINHA
-        const canvasMouseX = (clientX - transform.x) / transform.scale;
-        const canvasMouseY = (clientY - transform.y) / transform.scale;
-
+        const canvasMouseX = (clientX - transform.x) / transform.scale; const canvasMouseY = (clientY - transform.y) / transform.scale;
         updateActiveTabData((t) => ({
-          ...t,
-          connections: t.connections.map((c) => {
+          ...t, connections: t.connections.map((c) => {
             if (c.id !== draggingCP.connId) return c;
-            const fromNode = t.nodes.find((n) => n.id === c.fromNodeId);
-            const toNode = t.nodes.find((n) => n.id === c.toNodeId);
+            const fromNode = t.nodes.find((n) => n.id === c.fromNodeId); const toNode = t.nodes.find((n) => n.id === c.toNodeId);
             if (!fromNode || !toNode) return c;
-
-            const p1 = getPortPosition(fromNode, c.fromPortIndex);
-            const p2 = getPortPosition(toNode, c.toPortIndex);
-
-            let cp1Off = c.cp1Offset;
-            let cp2Off = c.cp2Offset;
-
-            // Se for o primeiro arraste, salva os offsets auto como ponto de partida
-            if (!cp1Off || !cp2Off) {
-              const autoCps = getBezierControlPoints(p1, p2);
-              cp1Off = { dx: autoCps.cp1.x - p1.x, dy: autoCps.cp1.y - p1.y };
-              cp2Off = { dx: autoCps.cp2.x - p2.x, dy: autoCps.cp2.y - p2.y };
-            }
-
-            if (draggingCP.cpIndex === 1) {
-              cp1Off = { dx: canvasMouseX - p1.x, dy: canvasMouseY - p1.y };
-            } else {
-              cp2Off = { dx: canvasMouseX - p2.x, dy: canvasMouseY - p2.y };
-            }
+            const p1 = getPortPosition(fromNode, c.fromPortIndex); const p2 = getPortPosition(toNode, c.toPortIndex);
+            let cp1Off = c.cp1Offset; let cp2Off = c.cp2Offset;
+            if (!cp1Off || !cp2Off) { const autoCps = getBezierControlPoints(p1, p2); cp1Off = { dx: autoCps.cp1.x - p1.x, dy: autoCps.cp1.y - p1.y }; cp2Off = { dx: autoCps.cp2.x - p2.x, dy: autoCps.cp2.y - p2.y }; }
+            if (draggingCP.cpIndex === 1) { cp1Off = { dx: canvasMouseX - p1.x, dy: canvasMouseY - p1.y }; } else { cp2Off = { dx: canvasMouseX - p2.x, dy: canvasMouseY - p2.y }; }
             return { ...c, cp1Offset: cp1Off, cp2Offset: cp2Off };
           })
         }));
@@ -374,10 +374,7 @@ export default function App() {
     };
 
     const onPointerUp = () => {
-      if (draggingNode || resizingNode || draggingCP) {
-        pushToHistory(safeTabs);
-      }
-
+      if (draggingNode || resizingNode || draggingCP) { pushToHistory(safeTabs); }
       if (connecting && !connecting.connected) {
         const dropX = connecting.currentX; const dropY = connecting.currentY;
         if (connecting.reanchorEnd === 'from') {
@@ -504,9 +501,7 @@ export default function App() {
             if (!fromNode || !toNode) return null;
             const p1 = getPortPosition(fromNode, conn.fromPortIndex); const p2 = getPortPosition(toNode, conn.toPortIndex);
             const isConnSelected = selectedConnectionId === conn.id;
-
             if (connecting?.replaceConnectionId === conn.id) return null;
-
             return (
               <g key={conn.id}>
                 <path d={getBezierPath(p1, p2, conn)} fill="none" stroke={isConnSelected ? '#2563EB' : '#94A3B8'} strokeWidth={isConnSelected ? 3.2 : 2} strokeLinecap="round" markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'} style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }} />
@@ -514,28 +509,19 @@ export default function App() {
                 
                 {isConnSelected && (() => {
                   const { cp1, cp2 } = getBezierControlPoints(p1, p2, conn);
-                  // Centro exato matemático da curva
                   const midX = 0.125 * p1.x + 0.375 * cp1.x + 0.375 * cp2.x + 0.125 * p2.x;
                   const midY = 0.125 * p1.y + 0.375 * cp1.y + 0.375 * cp2.y + 0.125 * p2.y;
-
                   return (
                     <g>
-                      {/* Guias visuais (traços pontilhados ligando a ponta à bolinha de curva) */}
                       <line x1={p1.x} y1={p1.y} x2={cp1.x} y2={cp1.y} stroke="#3B82F6" strokeWidth={1.5} strokeDasharray="4,4" opacity="0.6" />
                       <line x1={p2.x} y1={p2.y} x2={cp2.x} y2={cp2.y} stroke="#3B82F6" strokeWidth={1.5} strokeDasharray="4,4" opacity="0.6" />
-
-                      {/* Alça de Curvatura 1 (Origem) */}
                       <circle cx={cp1.x} cy={cp1.y} r={22} fill="transparent" style={{ cursor: 'move', pointerEvents: 'auto', touchAction: 'none' }} onMouseDown={(e) => handleStartDragCP(e, conn, 1)} onTouchStart={(e) => { const t = e.touches[0]; handleStartDragCP({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 1); }} />
                       <circle cx={cp1.x} cy={cp1.y} r={7} fill="#FFFFFF" stroke="#3B82F6" strokeWidth={2.5} pointerEvents="none" />
-
-                      {/* Alça de Curvatura 2 (Destino) */}
                       <circle cx={cp2.x} cy={cp2.y} r={22} fill="transparent" style={{ cursor: 'move', pointerEvents: 'auto', touchAction: 'none' }} onMouseDown={(e) => handleStartDragCP(e, conn, 2)} onTouchStart={(e) => { const t = e.touches[0]; handleStartDragCP({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 2); }} />
                       <circle cx={cp2.x} cy={cp2.y} r={7} fill="#FFFFFF" stroke="#3B82F6" strokeWidth={2.5} pointerEvents="none" />
-
-                      {/* BOTÃO VERMELHO CENTRAL PARA RESETAR A CURVATURA */}
                       {(conn.cp1Offset || conn.cp2Offset) && (
                         <g>
-                          <circle cx={midX} cy={midY} r={18} fill="transparent" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onMouseDown={(e) => handleResetCurve(e, conn.id)} onTouchStart={(e) => handleResetCurve(e, conn.id)} title="Clique para redefinir a curva automática" />
+                          <circle cx={midX} cy={midY} r={18} fill="transparent" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onMouseDown={(e) => handleResetCurve(e, conn.id)} onTouchStart={(e) => handleResetCurve(e, conn.id)} title="Redefinir curva automática" />
                           <circle cx={midX} cy={midY} r={6} fill="#EF4444" stroke="#FFFFFF" strokeWidth={2} pointerEvents="none" />
                         </g>
                       )}
@@ -588,6 +574,7 @@ export default function App() {
           onSelectTab={(id) => { setActiveTabId(id); setSelectedNodeId(null); setSelectedConnectionId(null); }}
           onAddTab={() => { const newId = `tab-${Date.now()}`; const newTab = { id: newId, title: `Mapa ${safeTabs.length + 1}`, nodes: [{ id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 16, textAlignment: 'Center', imageData: null }], connections: [] }; const nextTabs = [...safeTabs, newTab]; setTabs(nextTabs); pushToHistory(nextTabs); setActiveTabId(newId); }}
           onRenameTab={(id, title) => { const nextTabs = safeTabs.map((t) => (t.id === id ? { ...t, title } : t)); setTabs(nextTabs); pushToHistory(nextTabs); }}
+          onDeleteTab={handleDeleteTab}
         />
       )}
 
