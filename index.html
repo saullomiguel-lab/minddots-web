@@ -2,23 +2,37 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Trava o zoom nativo do navegador para as barras nunca aumentarem nem sumirem -->
+    <meta 
+      name="viewport" 
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" 
+    />
     <title>MindDots - Seu Mapa Mental</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233B82F6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v4'/><path d='M12 18v4'/><path d='M4.93 4.93l2.83 2.83'/><path d='M16.24 16.24l2.83 2.83'/><path d='M2 12h4'/><path d='M18 12h4'/><path d='M4.93 19.07l2.83-2.83'/><path d='M16.24 7.76l2.83-2.83'/></svg>" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563EB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v4'/><path d='M12 18v4'/><path d='M4.93 4.93l2.83 2.83'/><path d='M16.24 16.24l2.83 2.83'/><path d='M2 12h4'/><path d='M18 12h4'/><path d='M4.93 19.07l2.83-2.83'/><path d='M16.24 7.76l2.83-2.83'/></svg>" />
     <style>
       * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
+        -webkit-tap-highlight-color: transparent;
       }
-      body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      body, html {
+        width: 100%;
+        height: 100%;
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
         background-color: #F8FAFC;
         color: #1E293B;
         overflow: hidden;
         user-select: none;
+        touch-action: none;
       }
     </style>
+    <!-- Bloqueia gestos de pinça da página no Safari iOS para dar zoom apenas no Canvas -->
+    <script>
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+      document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
+      document.addEventListener('gestureend', function (e) { e.preventDefault(); });
+    </script>
   </head>
   <body>
     <div id="root"></div>
