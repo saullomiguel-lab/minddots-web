@@ -20,7 +20,6 @@ body, html, #root {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Área Infinita do Canvas */
 .canvas-container {
   width: 100vw;
   height: 100vh;
@@ -36,7 +35,7 @@ body, html, #root {
   cursor: grabbing;
 }
 
-/* 1. BARRA SUPERIOR MINIMALISTA (UNIFICADA PC E CELULAR) */
+/* 1. BARRA SUPERIOR MINIMALISTA (IGUAL NO PC E CELULAR) */
 .top-toolbar {
   position: fixed;
   top: 12px;
@@ -54,7 +53,10 @@ body, html, #root {
   border: 1px solid #E2E8F0;
   max-width: calc(100vw - 24px);
   box-sizing: border-box;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.top-toolbar::-webkit-scrollbar { display: none; }
 
 .btn-icon {
   background: transparent;
@@ -94,7 +96,7 @@ body, html, #root {
   flex-shrink: 0;
 }
 
-/* 2. BOTÕES FLUTUANTES (NOVA IDEIA E CENTRALIZAR - PC E CELULAR) */
+/* 2. BOTÕES FLUTUANTES (NOVA IDEIA E CENTRALIZAR) */
 .floating-action-container {
   position: fixed;
   right: 18px;
@@ -136,7 +138,7 @@ body, html, #root {
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* 3. GAVETA CONTEXTUAL DE FORMATAÇÃO (SURGE QUANDO UM BALÃO É SELECIONADO) */
+/* 3. GAVETA CONTEXTUAL (SÓ SURGE QUANDO BALÃO É SELECIONADO) */
 .format-drawer {
   display: none;
   position: fixed;
@@ -151,7 +153,6 @@ body, html, #root {
   border: 1px solid #E2E8F0;
   z-index: 110;
   width: auto;
-  min-width: 340px;
   max-width: calc(100vw - 24px);
   box-sizing: border-box;
   flex-direction: column;
@@ -184,7 +185,7 @@ body, html, #root {
   position: fixed;
   bottom: 12px;
   left: 16px;
-  max-width: calc(100vw - 86px); /* Respiro para os botões flutuantes */
+  max-width: calc(100vw - 86px);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
   padding: 4px;
@@ -220,7 +221,7 @@ body, html, #root {
   font-weight: 600;
 }
 
-/* AJUSTES EM TELAS ESTREITAS (CELULAR) */
+/* AJUSTES PARA TELAS ESTREITAS (CELULAR) */
 @media (max-width: 768px) {
   .top-toolbar {
     top: 8px;
@@ -238,7 +239,6 @@ body, html, #root {
   }
   .format-drawer {
     bottom: 60px;
-    min-width: unset;
     width: calc(100vw - 20px);
   }
 }
