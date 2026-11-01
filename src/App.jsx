@@ -96,34 +96,26 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  const loadRecentOrCreateMap = useCallback(async (userId, profileData) => {
+  const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase.from('maps').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1);
       if (error) throw error;
       if (data && data.length > 0) { handleSelectMap(data[0]); } else {
         const newMapData = { tabs: [{ id: `tab-${Date.now()}`, title: 'Mapa 1', nodes: [{ id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 16, textAlignment: 'Center', imageData: null }], connections: [] }] };
-        const { data: createdMap, error: createError } = await supabase.from('maps').insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData, team_id: profileData?.team_id || null }]).select().single();
+        const { data: createdMap, error: createError } = await supabase.from('maps').insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData }]).select().single();
         if (!createError && createdMap) { handleSelectMap(createdMap); }
       }
     } catch (err) { console.error('Erro ao carregar mapa recente:', err); }
   }, [handleSelectMap]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
-      if (session?.user) {
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        setProfile(p || null);
-        loadRecentOrCreateMap(session.user.id, p);
-      } else { setIsAuthOpen(true); }
+      if (session?.user) { loadUserProfile(session.user.id); loadRecentOrCreateMap(session.user.id); } else { setIsAuthOpen(true); }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
-      if (session?.user) {
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        setProfile(p || null);
-        loadRecentOrCreateMap(session.user.id, p);
-      } else { setProfile(null); setCurrentMap(null); setTabs([]); setIsAuthOpen(true); }
+      if (session?.user) { loadUserProfile(session.user.id); loadRecentOrCreateMap(session.user.id); } else { setProfile(null); setCurrentMap(null); setTabs([]); setIsAuthOpen(true); }
     });
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
@@ -134,7 +126,7 @@ export default function App() {
     let inactivityTimer;
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(async () => { alert('Sua sessão expirou por inatividade. Entre novamente.'); await supabase.auth.signOut(); }, ONE_HOUR);
+      inactivityTimer = setTimeout(async () => { alert('Sua sessão expirou por inatividade (1 hora sem uso). Por favor, entre novamente.'); await supabase.auth.signOut(); }, ONE_HOUR);
     };
     const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
     events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
@@ -203,7 +195,7 @@ export default function App() {
     };
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
-  }, [safeTabs, activeTabId, transform, pushToHistory]);
+  }, [safeTabs, activeTabId, transform]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedConnectionId) {
@@ -231,6 +223,7 @@ export default function App() {
     const handleKeyDown = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
       if (isInput) return;
+
       if (e.key === 'Escape') {
         if (connecting) setConnecting(null);
         setSelectedNodeId(null); setSelectedConnectionId(null); setIsPanning(false); setDraggingNode(null); setResizingNode(null); setDraggingCP(null);
@@ -437,7 +430,7 @@ export default function App() {
     setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y, connected: false });
   };
 
-  // Esta função vazia evita o crash do MindNode.jsx
+  // RESTAURAÇÃO OBRIGATÓRIA DA FUNÇÃO PARA EVITAR ERRO DE REFERÊNCIA NO MINDNODE
   const handlePortMouseUp = () => {};
 
   const handleExportImage = () => {
