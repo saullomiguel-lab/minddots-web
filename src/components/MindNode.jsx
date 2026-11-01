@@ -16,16 +16,22 @@ export default function MindNode({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text || '');
   const editorRef = useRef(null);
+  const pasteFileRef = useRef(null);
 
   useEffect(() => {
     setEditText(node.text || '');
   }, [node.text]);
 
+  // Expansão imediata de todas as linhas ao abrir para editar (sem ficar em uma linha só!)
   useEffect(() => {
     if (isEditing && editorRef.current) {
       editorRef.current.focus();
       const val = editorRef.current.value;
       editorRef.current.setSelectionRange(val.length, val.length);
+      
+      // Ajusta a altura na hora para comportar todo o texto existente
+      editorRef.current.style.height = 'auto';
+      editorRef.current.style.height = `${Math.max(editorRef.current.scrollHeight, 26)}px`;
     }
   }, [isEditing]);
 
@@ -53,60 +59,76 @@ export default function MindNode({
     setEditText(e.target.value);
     if (editorRef.current) {
       editorRef.current.style.height = 'auto';
-      editorRef.current.style.height = `${editorRef.current.scrollHeight}px`;
+      editorRef.current.style.height = `${Math.max(editorRef.current.scrollHeight, 26)}px`;
     }
   };
 
-  // Leitura robusta da área de transferência (Imagens e Textos)
+  // Leitura robusta da área de transferência com suporte direto a imagens e textos
   const handlePasteClick = async (e) => {
     e.stopPropagation();
 
-    // 1. Tenta leitura avançada via navigator.clipboard
-    if (navigator.clipboard) {
+    // 1. Tenta acessar via API de Área de Transferência
+    if (navigator.clipboard && navigator.clipboard.read) {
       try {
-        if (navigator.clipboard.read) {
-          const items = await navigator.clipboard.read();
-          for (const item of items) {
-            // Verifica se há imagem
-            const imageType = item.types.find((t) => t.startsWith('image/'));
-            if (imageType) {
-              const blob = await item.getType(imageType);
-              const reader = new FileReader();
-              reader.onload = (evt) => {
-                onPaste(node.id, { imageData: evt.target.result });
-              };
-              reader.readAsDataURL(blob);
-              return;
-            }
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          // Busca imagem na área de transferência (print ou cópia)
+          const imgType = item.types.find((t) => t.startsWith('image/'));
+          if (imgType) {
+            const blob = await item.getType(imgType);
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              onPaste(node.id, { imageData: evt.target.result });
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
 
-            // Verifica se há texto simples no item
-            if (item.types.includes('text/plain')) {
-              const textBlob = await item.getType('text/plain');
-              const text = await textBlob.text();
-              if (text && text.trim()) {
-                onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text.trim() });
-                return;
-              }
+          // Se for texto simples
+          if (item.types.includes('text/plain')) {
+            const textBlob = await item.getType('text/plain');
+            const text = await textBlob.text();
+            if (text && text.trim()) {
+              onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text.trim() });
+              return;
             }
           }
         }
       } catch (err) {
-        console.warn('Tentativa com clipboard.read() falhou, testando readText():', err);
-      }
-
-      // 2. Fallback direto para texto se o navegador restringir leitura de arquivos
-      try {
-        if (navigator.clipboard.readText) {
-          const text = await navigator.clipboard.readText();
-          if (text && text.trim()) {
-            onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text.trim() });
-            return;
-          }
-        }
-      } catch (textErr) {
-        console.warn('Permissão de área de transferência restrita pelo navegador:', textErr);
+        console.warn('Leitura direta bloqueada pelo navegador, tentando fallback:', err);
       }
     }
+
+    // 2. Fallback de texto simples
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          // Se for link de imagem da internet, anexa como imagem
+          if (/^https?:\/\/.*\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(text.trim())) {
+            onPaste(node.id, { imageData: text.trim() });
+            return;
+          }
+          onPaste(node.id, { text: (node.text ? node.text + '\n' : '') + text.trim() });
+          return;
+        }
+      }
+    } catch {
+      // Se o navegador bloquear o acesso sem permissão, abre o seletor de arquivos de imagem direto
+      pasteFileRef.current?.click();
+    }
+  };
+
+  const handleManualImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        onPaste(node.id, { imageData: evt.target.result });
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
   };
 
   const placeholder = isRoot ? '💡 Ideia Principal' : 'Nova Ideia';
@@ -143,34 +165,43 @@ export default function MindNode({
     >
       {/* Botão Flutuante 📋 Colar */}
       {isSelected && !isEditing && (
-        <button
-          onClick={handlePasteClick}
-          onMouseDown={(e) => e.stopPropagation()}
-          title="Colar texto ou imagem da área de transferência"
-          style={{
-            position: 'absolute',
-            top: '-26px',
-            left: '0px',
-            background: '#1E293B',
-            color: '#FFFFFF',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '3px 9px',
-            fontSize: '11px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-            zIndex: 35
-          }}
-        >
-          📋 Colar
-        </button>
+        <>
+          <button
+            onClick={handlePasteClick}
+            onMouseDown={(e) => e.stopPropagation()}
+            title="Colar texto ou imagem da área de transferência (ou aperte Ctrl+V)"
+            style={{
+              position: 'absolute',
+              top: '-26px',
+              left: '0px',
+              background: '#1E293B',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '3px 9px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+              zIndex: 35
+            }}
+          >
+            📋 Colar
+          </button>
+          <input
+            type="file"
+            ref={pasteFileRef}
+            onChange={handleManualImageUpload}
+            accept="image/*"
+            style={{ display: 'none' }}
+          />
+        </>
       )}
 
-      {/* 4 Portas Conectoras com "+" branco no meio */}
+      {/* 4 Portas Conectoras: Bolinhas azuis com "+" */}
       {isSelected &&
         [0, 1, 2, 3].map((portIdx) => {
           const positions = [
@@ -223,7 +254,7 @@ export default function MindNode({
           );
         })}
 
-      {/* Ajuste de tamanho clicando em qualquer linha da borda */}
+      {/* Redimensionamento em qualquer linha da borda */}
       {isSelected && (
         <>
           <div
@@ -275,7 +306,7 @@ export default function MindNode({
         />
       )}
 
-      {/* Editor de Texto In-Place (rente e abaixo da imagem) */}
+      {/* Editor de Texto com Altura Total e Suporte Multilinha */}
       {isEditing ? (
         <textarea
           ref={editorRef}
@@ -284,9 +315,9 @@ export default function MindNode({
           onBlur={finishEditing}
           onKeyDown={handleKeyDown}
           placeholder={hasImage ? '' : placeholder}
-          rows={1}
           style={{
             width: '100%',
+            minHeight: '26px',
             background: 'transparent',
             border: 'none',
             outline: 'none',
@@ -299,7 +330,8 @@ export default function MindNode({
             color: node.textColor || '#1E293B',
             fontFamily: 'inherit',
             lineHeight: '1.4',
-            display: 'block'
+            display: 'block',
+            boxSizing: 'border-box'
           }}
         />
       ) : (
