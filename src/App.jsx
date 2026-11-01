@@ -34,6 +34,15 @@ export default function App() {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
+  // Controle de Toque Touch Mobile (1 dedo = Pan, 2 dedos = Pinch-to-zoom)
+  const touchStateRef = useRef({
+    isTracking: false,
+    lastX: 0,
+    lastY: 0,
+    startDist: 0,
+    startScale: 1
+  });
+
   // Arrastos e Redimensionamentos
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
@@ -52,7 +61,7 @@ export default function App() {
       return;
     }
 
-    const padding = 80;
+    const padding = 70;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
     nodes.forEach((n) => {
@@ -277,7 +286,7 @@ export default function App() {
     );
   };
 
-  // Colar com Ctrl + V: Cria balão automático com imagem ou texto
+  // Colar com Ctrl + V
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
@@ -440,7 +449,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [connecting, fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, selectedConnectionId, clipboardNode]);
 
-  // Zoom
+  // Zoom Mouse
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -450,6 +459,56 @@ export default function App() {
     const newX = mouseX - (mouseX - transform.x) * (newScale / transform.scale);
     const newY = mouseY - (mouseY - transform.y) * (newScale / transform.scale);
     setTransform({ x: newX, y: newY, scale: newScale });
+  };
+
+  // GESTOS TOUCH MOBILE (1 dedo = Mover mapa, 2 dedos = Zoom de pinça)
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1 && e.target === containerRef.current) {
+      touchStateRef.current.isTracking = true;
+      touchStateRef.current.lastX = e.touches[0].clientX;
+      touchStateRef.current.lastY = e.touches[0].clientY;
+      setSelectedNodeId(null);
+      setSelectedConnectionId(null);
+    } else if (e.touches.length === 2) {
+      touchStateRef.current.isTracking = false;
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      touchStateRef.current.startDist = dist;
+      touchStateRef.current.startScale = transform.scale;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 1 && touchStateRef.current.isTracking) {
+      const dx = e.touches[0].clientX - touchStateRef.current.lastX;
+      const dy = e.touches[0].clientY - touchStateRef.current.lastY;
+      touchStateRef.current.lastX = e.touches[0].clientX;
+      touchStateRef.current.lastY = e.touches[0].clientY;
+      setTransform((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+    } else if (e.touches.length === 2 && touchStateRef.current.startDist > 0) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const factor = dist / touchStateRef.current.startDist;
+      const newScale = Math.min(Math.max(touchStateRef.current.startScale * factor, 0.25), 3);
+
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+      setTransform((prev) => {
+        const newX = midX - (midX - prev.x) * (newScale / prev.scale);
+        const newY = midY - (midY - prev.y) * (newScale / prev.scale);
+        return { x: newX, y: newY, scale: newScale };
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStateRef.current.isTracking = false;
+    touchStateRef.current.startDist = 0;
   };
 
   const handleDoubleClickCanvas = (e) => {
@@ -504,7 +563,6 @@ export default function App() {
     }
   };
 
-  // Início do arrasto para reconectar alças de uma linha existente
   const handleStartReanchor = (e, conn, end) => {
     e.stopPropagation();
     setDraggingNode(null);
@@ -534,7 +592,7 @@ export default function App() {
     }
   };
 
-  // Monitoramento Global do Mouse
+  // Monitoramento Global
   useEffect(() => {
     const onWindowMouseMove = (e) => {
       if (isPanning) {
@@ -751,13 +809,11 @@ export default function App() {
     });
   };
 
-  // 1. EXPORTAR IMAGEM (JPG EM ALTA RESOLUÇÃO) COM "SALVAR COMO..."
   const handleExportImage = () => {
     const title = currentMap?.title || activeTab?.title || 'mapa-mental';
     exportMapToJpg(activeTab.nodes, activeTab.connections, title);
   };
 
-  // 2. EXPORTAR ARQUIVO (JSON) COM "SALVAR COMO..."
   const handleExportFile = async () => {
     const title = (currentMap?.title || activeTab?.title || 'mapa-mental')
       .toLowerCase()
@@ -775,6 +831,9 @@ export default function App() {
       className={`canvas-container ${isPanning ? 'panning' : ''}`}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       onDoubleClick={handleDoubleClickCanvas}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -820,7 +879,7 @@ export default function App() {
         canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG Infinito com Conexões e Alças de Reconexão */}
+      {/* SVG Infinito com Conexões */}
       <svg
         style={{
           position: 'absolute',
@@ -853,7 +912,6 @@ export default function App() {
 
             return (
               <g key={conn.id}>
-                {/* Linha visível */}
                 <path
                   d={getBezierPath(p1, p2)}
                   fill="none"
@@ -864,7 +922,6 @@ export default function App() {
                   style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }}
                 />
 
-                {/* Área ampla de clique */}
                 <path
                   d={getBezierPath(p1, p2)}
                   fill="none"
@@ -878,7 +935,6 @@ export default function App() {
                   }}
                 />
 
-                {/* Alças Interativas ao Selecionar Linha */}
                 {isConnSelected && (
                   <>
                     <circle
