@@ -6,6 +6,7 @@ import AuthModal from './components/AuthModal';
 import ForcePasswordChangeModal from './components/ForcePasswordChangeModal';
 import AdminPanel from './components/AdminPanel';
 import MapsManagerModal from './components/MapsManagerModal';
+import TeamPanel from './components/TeamPanel';
 import { getPortPosition, getBezierPath } from './constants';
 import { exportMapToJpg, saveFileWithPicker } from './utils/exportHelper';
 import { supabase } from './supabaseClient';
@@ -16,6 +17,7 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isMapsOpen, setIsMapsOpen] = useState(false);
+  const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const [currentMap, setCurrentMap] = useState(null);
@@ -34,15 +36,6 @@ export default function App() {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Controle de Gestos no Celular
-  const touchStateRef = useRef({
-    isTracking: false,
-    lastX: 0,
-    lastY: 0,
-    startDist: 0,
-    startScale: 1
-  });
-
   // Arrastos e Redimensionamentos
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
@@ -54,7 +47,7 @@ export default function App() {
     setProfile(data || null);
   };
 
-  // Encaixe 100% na Tela (Fit to Screen)
+  // Encaixe 100% na Tela
   const fitContentToScreen = useCallback((nodes) => {
     if (!nodes || nodes.length === 0) {
       setTransform({ x: 0, y: 0, scale: 1 });
@@ -75,10 +68,8 @@ export default function App() {
 
     const contentW = Math.max(maxX - minX, 120);
     const contentH = Math.max(maxY - minY, 80);
-
     const availableW = window.innerWidth - padding * 2;
     const availableH = window.innerHeight - padding * 2 - 60;
-
     const scaleX = availableW / contentW;
     const scaleY = availableH / contentH;
     const optimalScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.25), 1.15);
@@ -140,7 +131,6 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  // Carga de Mapa Recente
   const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -156,28 +146,16 @@ export default function App() {
         handleSelectMap(data[0]);
       } else {
         const newMapData = {
-          tabs: [
-            {
-              id: `tab-${Date.now()}`,
-              title: 'Mapa 1',
-              nodes: [
-                {
-                  id: `node-${Date.now()}`,
-                  x: 350,
-                  y: 220,
-                  width: 170,
-                  height: 75,
-                  text: '',
-                  backgroundColor: '#FFFFFF',
-                  textColor: '#1E293B',
-                  fontSize: 16,
-                  textAlignment: 'Center',
-                  imageData: null
-                }
-              ],
-              connections: []
-            }
-          ]
+          tabs: [{
+            id: `tab-${Date.now()}`,
+            title: 'Mapa 1',
+            nodes: [{
+              id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75,
+              text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B',
+              fontSize: 16, textAlignment: 'Center', imageData: null
+            }],
+            connections: []
+          }]
         };
 
         const { data: createdMap, error: createError } = await supabase
@@ -222,7 +200,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
-  // Logout por Inatividade (1 hora)
   useEffect(() => {
     if (!user) return;
     const ONE_HOUR = 60 * 60 * 1000;
@@ -231,7 +208,7 @@ export default function App() {
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(async () => {
-        alert('Sua sessão expirou por inatividade (1 hora sem uso). Por favor, entre novamente.');
+        alert('Sua sessão expirou por inatividade. Por favor, entre novamente.');
         await supabase.auth.signOut();
       }, ONE_HOUR);
     };
@@ -240,14 +217,12 @@ export default function App() {
     events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
 
     resetTimer();
-
     return () => {
       clearTimeout(inactivityTimer);
       events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
     };
   }, [user]);
 
-  // Auto-salvamento na Nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -277,16 +252,12 @@ export default function App() {
     setTabs((prev) =>
       prev.map((t) =>
         t.id === activeTabId
-          ? {
-              ...t,
-              nodes: t.nodes.map((n) => (n.id === nodeId ? { ...n, height: actualHeight } : n))
-            }
+          ? { ...t, nodes: t.nodes.map((n) => (n.id === nodeId ? { ...n, height: actualHeight } : n)) }
           : t
       )
     );
   };
 
-  // Colar com Ctrl + V
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
@@ -296,7 +267,6 @@ export default function App() {
       if (!clipboardData) return;
 
       let foundImageFile = null;
-
       if (clipboardData.files && clipboardData.files.length > 0) {
         for (let i = 0; i < clipboardData.files.length; i++) {
           if (clipboardData.files[i].type.startsWith('image/')) {
@@ -305,7 +275,6 @@ export default function App() {
           }
         }
       }
-
       if (!foundImageFile && clipboardData.items) {
         for (let i = 0; i < clipboardData.items.length; i++) {
           if (clipboardData.items[i].type.startsWith('image/')) {
@@ -314,18 +283,14 @@ export default function App() {
           }
         }
       }
-
       let htmlImgSrc = null;
       if (!foundImageFile) {
         const html = clipboardData.getData('text/html');
         if (html) {
           const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-          if (match && match[1]) {
-            htmlImgSrc = match[1];
-          }
+          if (match && match[1]) htmlImgSrc = match[1];
         }
       }
-
       const plainText = clipboardData.getData('text/plain') || '';
       let isImageUrl = false;
       if (!foundImageFile && !htmlImgSrc && plainText) {
@@ -338,14 +303,8 @@ export default function App() {
           id: `node-${Date.now()}`,
           x: -transform.x + window.innerWidth / 2 - 100,
           y: -transform.y + window.innerHeight / 2 - 80,
-          width: 200,
-          height: 120,
-          text: '',
-          backgroundColor: '#FFFFFF',
-          textColor: '#1E293B',
-          fontSize: 14,
-          textAlignment: 'Center',
-          imageData: imgSrc
+          width: 200, height: 120, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B',
+          fontSize: 14, textAlignment: 'Center', imageData: imgSrc
         };
         updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
         setSelectedNodeId(newNode.id);
@@ -358,16 +317,8 @@ export default function App() {
         reader.readAsDataURL(foundImageFile);
         return;
       }
-
-      if (htmlImgSrc) {
-        createBalloonWithImage(htmlImgSrc);
-        return;
-      }
-
-      if (isImageUrl) {
-        createBalloonWithImage(plainText.trim());
-        return;
-      }
+      if (htmlImgSrc) return createBalloonWithImage(htmlImgSrc);
+      if (isImageUrl) return createBalloonWithImage(plainText.trim());
 
       if (plainText && plainText.trim()) {
         e.preventDefault();
@@ -375,43 +326,31 @@ export default function App() {
           id: `node-${Date.now()}`,
           x: -transform.x + window.innerWidth / 2 - 85,
           y: -transform.y + window.innerHeight / 2 - 37,
-          width: 170,
-          height: 75,
-          text: plainText.trim(),
-          backgroundColor: '#FFFFFF',
-          textColor: '#1E293B',
-          fontSize: 14,
-          textAlignment: 'Left',
-          imageData: null
+          width: 170, height: 75, text: plainText.trim(), backgroundColor: '#FFFFFF',
+          textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null
         };
         updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
         setSelectedNodeId(newNode.id);
         setSelectedConnectionId(null);
       }
     };
-
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
   }, [safeTabs, activeTabId, transform]);
 
-  // Exclusão por Delete
   const handleDeleteSelected = useCallback(() => {
     if (selectedConnectionId) {
       updateActiveTabData((t) => ({
-        ...t,
-        connections: t.connections.filter((c) => c.id !== selectedConnectionId)
+        ...t, connections: t.connections.filter((c) => c.id !== selectedConnectionId)
       }), true);
       setSelectedConnectionId(null);
       return;
     }
-
     if (selectedNodeId) {
       updateActiveTabData((t) => ({
         ...t,
         nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
-        connections: t.connections.filter(
-          (c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId
-        )
+        connections: t.connections.filter((c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId)
       }), true);
       setSelectedNodeId(null);
     }
@@ -424,18 +363,13 @@ export default function App() {
 
       if (e.key === 'Escape') {
         if (connecting) setConnecting(null);
-        setSelectedNodeId(null);
-        setSelectedConnectionId(null);
-        setIsPanning(false);
-        setDraggingNode(null);
-        setResizingNode(null);
+        setSelectedNodeId(null); setSelectedConnectionId(null);
+        setIsPanning(false); setDraggingNode(null); setResizingNode(null);
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
-        if (e.shiftKey) handleRedo();
-        else handleUndo();
+        if (e.shiftKey) handleRedo(); else handleUndo();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
-        e.preventDefault();
-        handleRedo();
+        e.preventDefault(); handleRedo();
       } else if (e.key === 'p' || e.key === 'P') {
         fitContentToScreen(activeTab.nodes);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -449,66 +383,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [connecting, fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, selectedConnectionId, clipboardNode]);
 
-  // Zoom no Mouse
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
     const newScale = Math.min(Math.max(transform.scale * zoomFactor, 0.25), 3);
-    const mouseX = e.clientX;
-    const mouseY = e.clientY;
+    const mouseX = e.clientX; const mouseY = e.clientY;
     const newX = mouseX - (mouseX - transform.x) * (newScale / transform.scale);
     const newY = mouseY - (mouseY - transform.y) * (newScale / transform.scale);
     setTransform({ x: newX, y: newY, scale: newScale });
-  };
-
-  // Gestos Touch no Canvas (1 dedo = Mover mapa livre, 2 dedos = Pinça para Zoom)
-  const handleTouchStart = (e) => {
-    if (e.touches.length === 1 && e.target === containerRef.current) {
-      touchStateRef.current.isTracking = true;
-      touchStateRef.current.lastX = e.touches[0].clientX;
-      touchStateRef.current.lastY = e.touches[0].clientY;
-      setSelectedNodeId(null);
-      setSelectedConnectionId(null);
-    } else if (e.touches.length === 2) {
-      touchStateRef.current.isTracking = false;
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      touchStateRef.current.startDist = dist;
-      touchStateRef.current.startScale = transform.scale;
-    }
-  };
-
-  const handleTouchMove = (e) => {
-    if (e.touches.length === 1 && touchStateRef.current.isTracking) {
-      const dx = e.touches[0].clientX - touchStateRef.current.lastX;
-      const dy = e.touches[0].clientY - touchStateRef.current.lastY;
-      touchStateRef.current.lastX = e.touches[0].clientX;
-      touchStateRef.current.lastY = e.touches[0].clientY;
-      setTransform((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-    } else if (e.touches.length === 2 && touchStateRef.current.startDist > 0) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const factor = dist / touchStateRef.current.startDist;
-      const newScale = Math.min(Math.max(touchStateRef.current.startScale * factor, 0.25), 3);
-
-      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-
-      setTransform((prev) => {
-        const newX = midX - (midX - prev.x) * (newScale / prev.scale);
-        const newY = midY - (midY - prev.y) * (newScale / prev.scale);
-        return { x: newX, y: newY, scale: newScale };
-      });
-    }
-  };
-
-  const handleTouchEnd = () => {
-    touchStateRef.current.isTracking = false;
-    touchStateRef.current.startDist = 0;
   };
 
   const handleDoubleClickCanvas = (e) => {
@@ -517,126 +399,65 @@ export default function App() {
     const canvasY = (e.clientY - transform.y) / transform.scale;
 
     const newNode = {
-      id: `node-${Date.now()}`,
-      x: canvasX - 85,
-      y: canvasY - 37,
-      width: 170,
-      height: 75,
-      text: '',
-      backgroundColor: '#FFFFFF',
-      textColor: '#1E293B',
-      fontSize: 14,
-      textAlignment: 'Left',
-      imageData: null
+      id: `node-${Date.now()}`, x: canvasX - 85, y: canvasY - 37, width: 170, height: 75,
+      text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14,
+      textAlignment: 'Left', imageData: null
     };
-
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
-    setSelectedNodeId(newNode.id);
-    setSelectedConnectionId(null);
+    setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
   };
 
   const handleAddNode = () => {
     const newNode = {
-      id: `node-${Date.now()}`,
-      x: -transform.x + window.innerWidth / 2 - 85,
-      y: -transform.y + window.innerHeight / 2 - 37,
-      width: 170,
-      height: 75,
-      text: '',
-      backgroundColor: '#FFFFFF',
-      textColor: '#1E293B',
-      fontSize: 14,
-      textAlignment: 'Left',
-      imageData: null
+      id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 85, y: -transform.y + window.innerHeight / 2 - 37,
+      width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B',
+      fontSize: 14, textAlignment: 'Left', imageData: null
     };
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
-    setSelectedNodeId(newNode.id);
-    setSelectedConnectionId(null);
+    setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
   };
 
   const handleMouseDown = (e) => {
     if (e.target === containerRef.current || e.button === 1 || e.button === 2) {
       setIsPanning(true);
       panStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
-      setSelectedNodeId(null);
-      setSelectedConnectionId(null);
+      setSelectedNodeId(null); setSelectedConnectionId(null);
     }
   };
 
-  // Reconexão de Linhas (Inicia o arraste da ponta ou da base)
   const handleStartReanchor = (e, conn, end) => {
     if (e.stopPropagation) e.stopPropagation();
-    setDraggingNode(null);
-    setResizingNode(null);
-
+    setDraggingNode(null); setResizingNode(null);
     const canvasMouseX = (e.clientX - transform.x) / transform.scale;
     const canvasMouseY = (e.clientY - transform.y) / transform.scale;
-
     if (end === 'to') {
-      setConnecting({
-        fromNodeId: conn.fromNodeId,
-        fromPortIndex: conn.fromPortIndex,
-        currentX: canvasMouseX,
-        currentY: canvasMouseY,
-        replaceConnectionId: conn.id,
-        reanchorEnd: 'to'
-      });
+      setConnecting({ fromNodeId: conn.fromNodeId, fromPortIndex: conn.fromPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'to' });
     } else {
-      setConnecting({
-        targetNodeId: conn.toNodeId,
-        targetPortIndex: conn.toPortIndex,
-        currentX: canvasMouseX,
-        currentY: canvasMouseY,
-        replaceConnectionId: conn.id,
-        reanchorEnd: 'from'
-      });
+      setConnecting({ targetNodeId: conn.toNodeId, targetPortIndex: conn.toPortIndex, currentX: canvasMouseX, currentY: canvasMouseY, replaceConnectionId: conn.id, reanchorEnd: 'from' });
     }
   };
 
-  // MONITORAMENTO UNIFICADO (Mouse no PC e Touch no Celular)
   useEffect(() => {
     const onPointerMove = (clientX, clientY) => {
       if (isPanning) {
-        setTransform((prev) => ({
-          ...prev,
-          x: clientX - panStartRef.current.x,
-          y: clientY - panStartRef.current.y
-        }));
+        setTransform((prev) => ({ ...prev, x: clientX - panStartRef.current.x, y: clientY - panStartRef.current.y }));
       } else if (draggingNode) {
         const dx = (clientX - draggingNode.startX) / transform.scale;
         const dy = (clientY - draggingNode.startY) / transform.scale;
         updateActiveTabData((t) => ({
-          ...t,
-          nodes: t.nodes.map((n) =>
-            n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n
-          )
+          ...t, nodes: t.nodes.map((n) => n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n)
         }));
       } else if (resizingNode) {
         const dx = (clientX - resizingNode.startX) / transform.scale;
         const dy = (clientY - resizingNode.startY) / transform.scale;
         const dir = resizingNode.direction;
-
-        let newW = resizingNode.origW;
-        let newH = resizingNode.origH;
-        let newX = resizingNode.origX;
-        let newY = resizingNode.origY;
-
+        let newW = resizingNode.origW, newH = resizingNode.origH, newX = resizingNode.origX, newY = resizingNode.origY;
         if (dir.includes('right')) newW = Math.max(120, resizingNode.origW + dx);
-        if (dir.includes('left')) {
-          newW = Math.max(120, resizingNode.origW - dx);
-          newX = resizingNode.origX + (resizingNode.origW - newW);
-        }
+        if (dir.includes('left')) { newW = Math.max(120, resizingNode.origW - dx); newX = resizingNode.origX + (resizingNode.origW - newW); }
         if (dir.includes('bottom')) newH = Math.max(60, resizingNode.origH + dy);
-        if (dir.includes('top')) {
-          newH = Math.max(60, resizingNode.origH - dy);
-          newY = resizingNode.origY + (resizingNode.origH - newH);
-        }
-
+        if (dir.includes('top')) { newH = Math.max(60, resizingNode.origH - dy); newY = resizingNode.origY + (resizingNode.origH - newH); }
         updateActiveTabData((t) => ({
-          ...t,
-          nodes: t.nodes.map((n) =>
-            n.id === resizingNode.id ? { ...n, x: newX, y: newY, width: newW, height: newH } : n
-          )
+          ...t, nodes: t.nodes.map((n) => n.id === resizingNode.id ? { ...n, x: newX, y: newY, width: newW, height: newH } : n)
         }));
       } else if (connecting) {
         const canvasMouseX = (clientX - transform.x) / transform.scale;
@@ -646,154 +467,64 @@ export default function App() {
     };
 
     const onPointerUp = () => {
-      if (draggingNode || resizingNode) {
-        pushToHistory(safeTabs);
-      }
-
+      if (draggingNode || resizingNode) pushToHistory(safeTabs);
       if (connecting && !connecting.connected) {
-        const dropX = connecting.currentX;
-        const dropY = connecting.currentY;
-
+        const dropX = connecting.currentX; const dropY = connecting.currentY;
         if (connecting.reanchorEnd === 'from') {
-          const originNode = activeTab.nodes.find((n) => {
-            const w = n.width || 170;
-            const h = n.height || 75;
-            return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24;
-          });
-
+          const originNode = activeTab.nodes.find((n) => { const w = n.width || 170; const h = n.height || 75; return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24; });
           if (originNode && originNode.id !== connecting.targetNodeId) {
-            let bestPort = 0;
-            let minDist = Infinity;
-            [0, 1, 2, 3].forEach((pIdx) => {
-              const pos = getPortPosition(originNode, pIdx);
-              const d = Math.hypot(dropX - pos.x, dropY - pos.y);
-              if (d < minDist) {
-                minDist = d;
-                bestPort = pIdx;
-              }
-            });
-
+            let bestPort = 0; let minDist = Infinity;
+            [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(originNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
             const nextTabs = safeTabs.map((t) => {
               if (t.id !== activeTabId) return t;
               const filtered = t.connections.filter((c) => c.id !== connecting.replaceConnectionId);
-              const newConn = {
-                id: `conn-${Date.now()}`,
-                fromNodeId: originNode.id,
-                fromPortIndex: bestPort,
-                toNodeId: connecting.targetNodeId,
-                toPortIndex: connecting.targetPortIndex
-              };
+              const newConn = { id: `conn-${Date.now()}`, fromNodeId: originNode.id, fromPortIndex: bestPort, toNodeId: connecting.targetNodeId, toPortIndex: connecting.targetPortIndex };
               return { ...t, connections: [...filtered, newConn] };
             });
-            setTabs(nextTabs);
-            pushToHistory(nextTabs);
+            setTabs(nextTabs); pushToHistory(nextTabs);
           }
         } else {
-          // Soltou a ponta da seta (muda de extremidade ou conecta a outro balão)
           const targetNode = activeTab.nodes.find((n) => {
             if (n.id === connecting.fromNodeId) return false;
-            const w = n.width || 170;
-            const h = n.height || 75;
+            const w = n.width || 170; const h = n.height || 75;
             return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24;
           });
-
           if (targetNode) {
-            let bestPort = 0;
-            let minDist = Infinity;
-            [0, 1, 2, 3].forEach((pIdx) => {
-              const pos = getPortPosition(targetNode, pIdx);
-              const d = Math.hypot(dropX - pos.x, dropY - pos.y);
-              if (d < minDist) {
-                minDist = d;
-                bestPort = pIdx;
-              }
-            });
-
+            let bestPort = 0; let minDist = Infinity;
+            [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(targetNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
             const nextTabs = safeTabs.map((t) => {
               if (t.id !== activeTabId) return t;
-              const filtered = connecting.replaceConnectionId
-                ? t.connections.filter((c) => c.id !== connecting.replaceConnectionId)
-                : t.connections;
-              const newConn = {
-                id: `conn-${Date.now()}`,
-                fromNodeId: connecting.fromNodeId,
-                fromPortIndex: connecting.fromPortIndex,
-                toNodeId: targetNode.id,
-                toPortIndex: bestPort
-              };
+              const filtered = connecting.replaceConnectionId ? t.connections.filter((c) => c.id !== connecting.replaceConnectionId) : t.connections;
+              const newConn = { id: `conn-${Date.now()}`, fromNodeId: connecting.fromNodeId, fromPortIndex: connecting.fromPortIndex, toNodeId: targetNode.id, toPortIndex: bestPort };
               return { ...t, connections: [...filtered, newConn] };
             });
-            setTabs(nextTabs);
-            pushToHistory(nextTabs);
+            setTabs(nextTabs); pushToHistory(nextTabs);
           } else if (!connecting.replaceConnectionId) {
             const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
             let bestToPort = 3;
             if (fromNode) {
-              const parentCenterX = fromNode.x + (fromNode.width || 170) / 2;
-              const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
-              const dx = connecting.currentX - parentCenterX;
-              const dy = connecting.currentY - parentCenterY;
-
-              if (Math.abs(dy) > Math.abs(dx)) {
-                bestToPort = dy > 0 ? 0 : 2;
-              } else {
-                bestToPort = dx > 0 ? 3 : 1;
-              }
+              const parentCenterX = fromNode.x + (fromNode.width || 170) / 2; const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
+              const dx = connecting.currentX - parentCenterX; const dy = connecting.currentY - parentCenterY;
+              if (Math.abs(dy) > Math.abs(dx)) { bestToPort = dy > 0 ? 0 : 2; } else { bestToPort = dx > 0 ? 3 : 1; }
             }
-
-            const newNodeW = 170;
-            const newNodeH = 75;
-            const newNode = {
-              id: `node-${Date.now()}`,
-              x: connecting.currentX - newNodeW / 2,
-              y: connecting.currentY - newNodeH / 2,
-              width: newNodeW,
-              height: newNodeH,
-              text: '',
-              backgroundColor: '#FFFFFF',
-              textColor: '#1E293B',
-              fontSize: 14,
-              textAlignment: 'Left',
-              imageData: null
-            };
-
-            const newConn = {
-              id: `conn-${Date.now()}`,
-              fromNodeId: connecting.fromNodeId,
-              fromPortIndex: connecting.fromPortIndex,
-              toNodeId: newNode.id,
-              toPortIndex: bestToPort
-            };
-
-            const nextTabs = safeTabs.map((t) =>
-              t.id === activeTabId
-                ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] }
-                : t
-            );
-            setTabs(nextTabs);
-            pushToHistory(nextTabs);
-            setSelectedNodeId(newNode.id);
-            setSelectedConnectionId(null);
+            const newNodeW = 170; const newNodeH = 75;
+            const newNode = { id: `node-${Date.now()}`, x: connecting.currentX - newNodeW / 2, y: connecting.currentY - newNodeH / 2, width: newNodeW, height: newNodeH, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null };
+            const newConn = { id: `conn-${Date.now()}`, fromNodeId: connecting.fromNodeId, fromPortIndex: connecting.fromPortIndex, toNodeId: newNode.id, toPortIndex: bestToPort };
+            const nextTabs = safeTabs.map((t) => t.id === activeTabId ? { ...t, nodes: [...t.nodes, newNode], connections: [...t.connections, newConn] } : t);
+            setTabs(nextTabs); pushToHistory(nextTabs); setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
           }
         }
       }
-
-      setIsPanning(false);
-      setDraggingNode(null);
-      setResizingNode(null);
-      setConnecting(null);
+      setIsPanning(false); setDraggingNode(null); setResizingNode(null); setConnecting(null);
     };
 
     const onWindowMouseMove = (e) => onPointerMove(e.clientX, e.clientY);
     const onWindowMouseUp = () => onPointerUp();
-
     const onWindowTouchMove = (e) => {
       if (e.touches && e.touches.length > 0) {
         const touch = e.touches[0];
         onPointerMove(touch.clientX, touch.clientY);
-        if (draggingNode || connecting || resizingNode) {
-          if (e.cancelable) e.preventDefault();
-        }
+        if (draggingNode || connecting || resizingNode) { if (e.cancelable) e.preventDefault(); }
       }
     };
     const onWindowTouchEnd = () => onPointerUp();
@@ -806,27 +537,16 @@ export default function App() {
     }
 
     return () => {
-      window.removeEventListener('mousemove', onWindowMouseMove);
-      window.removeEventListener('mouseup', onWindowMouseUp);
-      window.removeEventListener('touchmove', onWindowTouchMove);
-      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('mousemove', onWindowMouseMove); window.removeEventListener('mouseup', onWindowMouseUp);
+      window.removeEventListener('touchmove', onWindowTouchMove); window.removeEventListener('touchend', onWindowTouchEnd);
     };
   }, [isPanning, draggingNode, resizingNode, connecting, transform, safeTabs, activeTab, activeTabId, pushToHistory]);
 
   const handlePortMouseDown = (e, nodeId, portIndex) => {
-    setDraggingNode(null);
-    setResizingNode(null);
-    setSelectedConnectionId(null);
-
+    setDraggingNode(null); setResizingNode(null); setSelectedConnectionId(null);
     const node = activeTab.nodes.find((n) => n.id === nodeId);
     const pos = getPortPosition(node, portIndex);
-    setConnecting({
-      fromNodeId: nodeId,
-      fromPortIndex: portIndex,
-      currentX: pos.x,
-      currentY: pos.y,
-      connected: false
-    });
+    setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y, connected: false });
   };
 
   const handleExportImage = () => {
@@ -835,9 +555,7 @@ export default function App() {
   };
 
   const handleExportFile = async () => {
-    const title = (currentMap?.title || activeTab?.title || 'mapa-mental')
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '-');
+    const title = (currentMap?.title || activeTab?.title || 'mapa-mental').toLowerCase().replace(/[^a-z0-9]/g, '-');
     const dataStr = JSON.stringify(tabs, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     await saveFileWithPicker(blob, `${title}.json`, 'application/json', 'json');
@@ -851,9 +569,6 @@ export default function App() {
       className={`canvas-container ${isPanning ? 'panning' : ''}`}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
       onDoubleClick={handleDoubleClickCanvas}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -863,24 +578,15 @@ export default function App() {
         onExportFile={handleExportFile}
         onAddImage={(img) => {
           if (selectedNodeId) {
-            updateActiveTabData((t) => ({
-              ...t,
-              nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n))
-            }), true);
+            updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true);
           }
         }}
         selectedNode={selectedNode || (selectedConnectionId ? { isConnection: true } : null)}
         onUpdateSelected={(patch) => {
           updateActiveTabData((t) => ({
-            ...t,
-            nodes: t.nodes.map((n) => {
+            ...t, nodes: t.nodes.map((n) => {
               if (n.id !== selectedNodeId) return n;
-              return {
-                ...n,
-                backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor,
-                fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize,
-                textAlignment: patch.align !== undefined ? patch.align : n.textAlignment
-              };
+              return { ...n, backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor, fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize, textAlignment: patch.align !== undefined ? patch.align : n.textAlignment };
             })
           }), true);
         }}
@@ -888,6 +594,7 @@ export default function App() {
         onResetView={() => fitContentToScreen(activeTab.nodes)}
         onOpenMaps={() => setIsMapsOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenTeam={() => setIsTeamOpen(true)}
         isAdmin={profile?.role === 'admin'}
         user={user}
         onOpenAuth={() => setIsAuthOpen(true)}
@@ -899,222 +606,56 @@ export default function App() {
         canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG com Conexões e Alças de Toque Ampliadas */}
-      <svg
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-          overflow: 'visible'
-        }}
-      >
+      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
         <defs>
-          <marker id="arrow-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#94A3B8" />
-          </marker>
-          <marker id="arrow-drag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#2563EB" />
-          </marker>
+          <marker id="arrow-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#94A3B8" /></marker>
+          <marker id="arrow-drag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#2563EB" /></marker>
         </defs>
-
         <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
           {activeTab.connections.map((conn) => {
             const fromNode = activeTab.nodes.find((n) => n.id === conn.fromNodeId);
             const toNode = activeTab.nodes.find((n) => n.id === conn.toNodeId);
             if (!fromNode || !toNode) return null;
-            const p1 = getPortPosition(fromNode, conn.fromPortIndex);
-            const p2 = getPortPosition(toNode, conn.toPortIndex);
+            const p1 = getPortPosition(fromNode, conn.fromPortIndex); const p2 = getPortPosition(toNode, conn.toPortIndex);
             const isConnSelected = selectedConnectionId === conn.id;
-
             if (connecting?.replaceConnectionId === conn.id) return null;
-
             return (
               <g key={conn.id}>
-                {/* Linha visível */}
-                <path
-                  d={getBezierPath(p1, p2)}
-                  fill="none"
-                  stroke={isConnSelected ? '#2563EB' : '#94A3B8'}
-                  strokeWidth={isConnSelected ? 3.2 : 2}
-                  strokeLinecap="round"
-                  markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'}
-                  style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }}
-                />
-
-                {/* Área ampla de toque invisível (30px) para dedos no celular e mouse no PC */}
-                <path
-                  d={getBezierPath(p1, p2)}
-                  fill="none"
-                  stroke="transparent"
-                  strokeWidth={30}
-                  style={{ pointerEvents: 'stroke', cursor: 'pointer', touchAction: 'none' }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedConnectionId(conn.id);
-                    setSelectedNodeId(null);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    setSelectedConnectionId(conn.id);
-                    setSelectedNodeId(null);
-                  }}
-                />
-
-                {/* Alças Ampliadas para Toque com o Dedo quando a linha é selecionada */}
+                <path d={getBezierPath(p1, p2)} fill="none" stroke={isConnSelected ? '#2563EB' : '#94A3B8'} strokeWidth={isConnSelected ? 3.2 : 2} strokeLinecap="round" markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'} style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }} />
+                <path d={getBezierPath(p1, p2)} fill="none" stroke="transparent" strokeWidth={30} style={{ pointerEvents: 'stroke', cursor: 'pointer', touchAction: 'none' }} onClick={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedNodeId(null); }} onTouchStart={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedNodeId(null); }} />
                 {isConnSelected && (
                   <>
-                    {/* Alça na ponta da seta (Target) */}
                     <g>
-                      {/* Área invisível grande para o polegar (48px de toque) */}
-                      <circle
-                        cx={p2.x}
-                        cy={p2.y}
-                        r={24}
-                        fill="transparent"
-                        style={{ cursor: 'crosshair', pointerEvents: 'auto', touchAction: 'none' }}
-                        onMouseDown={(e) => handleStartReanchor(e, conn, 'to')}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          if (e.cancelable) e.preventDefault();
-                          const t = e.touches[0];
-                          handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'to');
-                        }}
-                      />
-                      {/* Bolinha visual azul */}
-                      <circle
-                        cx={p2.x}
-                        cy={p2.y}
-                        r={8}
-                        fill="#2563EB"
-                        stroke="#FFFFFF"
-                        strokeWidth={2.5}
-                        pointerEvents="none"
-                      />
+                      <circle cx={p2.x} cy={p2.y} r={24} fill="transparent" style={{ cursor: 'crosshair', pointerEvents: 'auto', touchAction: 'none' }} onMouseDown={(e) => handleStartReanchor(e, conn, 'to')} onTouchStart={(e) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); const t = e.touches[0]; handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'to'); }} />
+                      <circle cx={p2.x} cy={p2.y} r={8} fill="#2563EB" stroke="#FFFFFF" strokeWidth={2.5} pointerEvents="none" />
                     </g>
-
-                    {/* Alça na base da seta (Origin) */}
                     <g>
-                      {/* Área invisível grande para o polegar (48px de toque) */}
-                      <circle
-                        cx={p1.x}
-                        cy={p1.y}
-                        r={24}
-                        fill="transparent"
-                        style={{ cursor: 'crosshair', pointerEvents: 'auto', touchAction: 'none' }}
-                        onMouseDown={(e) => handleStartReanchor(e, conn, 'from')}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          if (e.cancelable) e.preventDefault();
-                          const t = e.touches[0];
-                          handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'from');
-                        }}
-                      />
-                      {/* Bolinha visual branca com borda azul */}
-                      <circle
-                        cx={p1.x}
-                        cy={p1.y}
-                        r={7}
-                        fill="#FFFFFF"
-                        stroke="#2563EB"
-                        strokeWidth={2.5}
-                        pointerEvents="none"
-                      />
+                      <circle cx={p1.x} cy={p1.y} r={24} fill="transparent" style={{ cursor: 'crosshair', pointerEvents: 'auto', touchAction: 'none' }} onMouseDown={(e) => handleStartReanchor(e, conn, 'from')} onTouchStart={(e) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); const t = e.touches[0]; handleStartReanchor({ clientX: t.clientX, clientY: t.clientY, stopPropagation: () => e.stopPropagation() }, conn, 'from'); }} />
+                      <circle cx={p1.x} cy={p1.y} r={7} fill="#FFFFFF" stroke="#2563EB" strokeWidth={2.5} pointerEvents="none" />
                     </g>
                   </>
                 )}
               </g>
             );
           })}
-
-          {connecting && (
-            <path
-              d={
-                connecting.reanchorEnd === 'from'
-                  ? getBezierPath(
-                      { x: connecting.currentX, y: connecting.currentY },
-                      getPortPosition(
-                        activeTab.nodes.find((n) => n.id === connecting.targetNodeId),
-                        connecting.targetPortIndex
-                      )
-                    )
-                  : getBezierPath(
-                      getPortPosition(
-                        activeTab.nodes.find((n) => n.id === connecting.fromNodeId),
-                        connecting.fromPortIndex
-                      ),
-                      { x: connecting.currentX, y: connecting.currentY }
-                    )
-              }
-              fill="none"
-              stroke="#2563EB"
-              strokeWidth={2.5}
-              strokeDasharray="5,5"
-              markerEnd="url(#arrow-drag)"
-            />
-          )}
+          {connecting && (<path d={connecting.reanchorEnd === 'from' ? getBezierPath({ x: connecting.currentX, y: connecting.currentY }, getPortPosition(activeTab.nodes.find((n) => n.id === connecting.targetNodeId), connecting.targetPortIndex)) : getBezierPath(getPortPosition(activeTab.nodes.find((n) => n.id === connecting.fromNodeId), connecting.fromPortIndex), { x: connecting.currentX, y: connecting.currentY })} fill="none" stroke="#2563EB" strokeWidth={2.5} strokeDasharray="5,5" markerEnd="url(#arrow-drag)" />)}
         </g>
       </svg>
 
-      {/* Camada dos Balões */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transformOrigin: '0 0',
-          pointerEvents: 'none'
-        }}
-      >
+      <div style={{ position: 'absolute', top: 0, left: 0, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
         {activeTab.nodes.map((node, index) => (
           <div key={node.id} style={{ pointerEvents: 'auto' }}>
             <MindNode
               node={node}
               isSelected={selectedNodeId === node.id}
               isRoot={index === 0}
-              onSelect={(e, id) => {
-                setSelectedNodeId(id);
-                setSelectedConnectionId(null);
-              }}
-              onStartDrag={(pos, id) => {
-                setDraggingNode({
-                  id,
-                  startX: pos.clientX,
-                  startY: pos.clientY,
-                  origX: node.x,
-                  origY: node.y
-                });
-              }}
+              onSelect={(e, id) => { setSelectedNodeId(id); setSelectedConnectionId(null); }}
+              onStartDrag={(pos, id) => { setDraggingNode({ id, startX: pos.clientX, startY: pos.clientY, origX: node.x, origY: node.y }); }}
               onPortMouseDown={handlePortMouseDown}
               onHeightChange={handleHeightSync}
-              onResizeStart={(pos, id, direction) => {
-                const targetNode = activeTab.nodes.find((n) => n.id === id);
-                if (!targetNode) return;
-                setResizingNode({
-                  id,
-                  direction,
-                  startX: pos.clientX,
-                  startY: pos.clientY,
-                  origX: targetNode.x,
-                  origY: targetNode.y,
-                  origW: targetNode.width || 170,
-                  origH: targetNode.height || 75
-                });
-              }}
-              onUpdateText={(id, text) => {
-                updateActiveTabData((t) => ({
-                  ...t,
-                  nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n))
-                }), true);
-              }}
-              onPaste={(id, patch) => {
-                updateActiveTabData((t) => ({
-                  ...t,
-                  nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n))
-                }), true);
-              }}
+              onResizeStart={(pos, id, direction) => { const targetNode = activeTab.nodes.find((n) => n.id === id); if (!targetNode) return; setResizingNode({ id, direction, startX: pos.clientX, startY: pos.clientY, origX: targetNode.x, origY: targetNode.y, origW: targetNode.width || 170, origH: targetNode.height || 75 }); }}
+              onUpdateText={(id, text) => { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n)) }), true); }}
+              onPaste={(id, patch) => { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }), true); }}
             />
           </div>
         ))}
@@ -1124,66 +665,17 @@ export default function App() {
         <TabsBar
           tabs={safeTabs}
           activeTabId={activeTabId}
-          onSelectTab={(id) => {
-            setActiveTabId(id);
-            setSelectedNodeId(null);
-            setSelectedConnectionId(null);
-          }}
-          onAddTab={() => {
-            const newId = `tab-${Date.now()}`;
-            const newTab = {
-              id: newId,
-              title: `Mapa ${safeTabs.length + 1}`,
-              nodes: [
-                {
-                  id: `node-${Date.now()}`,
-                  x: 350,
-                  y: 220,
-                  width: 170,
-                  height: 75,
-                  text: '',
-                  backgroundColor: '#FFFFFF',
-                  textColor: '#1E293B',
-                  fontSize: 16,
-                  textAlignment: 'Center',
-                  imageData: null
-                }
-              ],
-              connections: []
-            };
-            const nextTabs = [...safeTabs, newTab];
-            setTabs(nextTabs);
-            pushToHistory(nextTabs);
-            setActiveTabId(newId);
-          }}
-          onRenameTab={(id, title) => {
-            const nextTabs = safeTabs.map((t) => (t.id === id ? { ...t, title } : t));
-            setTabs(nextTabs);
-            pushToHistory(nextTabs);
-          }}
+          onSelectTab={(id) => { setActiveTabId(id); setSelectedNodeId(null); setSelectedConnectionId(null); }}
+          onAddTab={() => { const newId = `tab-${Date.now()}`; const newTab = { id: newId, title: `Mapa ${safeTabs.length + 1}`, nodes: [{ id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 16, textAlignment: 'Center', imageData: null }], connections: [] }; const nextTabs = [...safeTabs, newTab]; setTabs(nextTabs); pushToHistory(nextTabs); setActiveTabId(newId); }}
+          onRenameTab={(id, title) => { const nextTabs = safeTabs.map((t) => (t.id === id ? { ...t, title } : t)); setTabs(nextTabs); pushToHistory(nextTabs); }}
         />
       )}
 
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => user && setIsAuthOpen(false)}
-        onAuthSuccess={() => setIsAuthOpen(false)}
-      />
-
-      <ForcePasswordChangeModal
-        isOpen={Boolean(profile?.must_change_password)}
-        userId={user?.id}
-        onSuccess={() => loadUserProfile(user?.id)}
-      />
-
+      <AuthModal isOpen={isAuthOpen} onClose={() => user && setIsAuthOpen(false)} onAuthSuccess={() => setIsAuthOpen(false)} />
+      <ForcePasswordChangeModal isOpen={Boolean(profile?.must_change_password)} userId={user?.id} onSuccess={() => loadUserProfile(user?.id)} />
       <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
-
-      <MapsManagerModal
-        isOpen={isMapsOpen}
-        onClose={() => setIsMapsOpen(false)}
-        onSelectMap={handleSelectMap}
-        userId={user?.id}
-      />
+      <TeamPanel isOpen={isTeamOpen} onClose={() => setIsTeamOpen(false)} profile={profile} onProfileUpdate={() => loadUserProfile(user?.id)} />
+      <MapsManagerModal isOpen={isMapsOpen} onClose={() => setIsMapsOpen(false)} onSelectMap={handleSelectMap} userId={user?.id} />
     </div>
   );
 }
