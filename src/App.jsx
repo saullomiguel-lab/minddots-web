@@ -163,6 +163,48 @@ export default function App() {
     setTabs((prev) => prev.map((t) => t.id === activeTabId ? { ...t, nodes: t.nodes.map((n) => (n.id === nodeId ? { ...n, height: actualHeight } : n)) } : t));
   };
 
+  useEffect(() => {
+    const handleGlobalPaste = (e) => {
+      const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
+      if (isInput) return;
+      const clipboardData = e.clipboardData; if (!clipboardData) return;
+      let foundImageFile = null;
+      if (clipboardData.files && clipboardData.files.length > 0) {
+        for (let i = 0; i < clipboardData.files.length; i++) { if (clipboardData.files[i].type.startsWith('image/')) { foundImageFile = clipboardData.files[i]; break; } }
+      }
+      if (!foundImageFile && clipboardData.items) {
+        for (let i = 0; i < clipboardData.items.length; i++) { if (clipboardData.items[i].type.startsWith('image/')) { foundImageFile = clipboardData.items[i].getAsFile(); break; } }
+      }
+      let htmlImgSrc = null;
+      if (!foundImageFile) {
+        const html = clipboardData.getData('text/html');
+        if (html) { const match = html.match(/<img[^>]+src=["']([^"']+)["']/i); if (match && match[1]) htmlImgSrc = match[1]; }
+      }
+      const plainText = clipboardData.getData('text/plain') || '';
+      let isImageUrl = false;
+      if (!foundImageFile && !htmlImgSrc && plainText) { isImageUrl = /^https?:\/\/.*\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(plainText.trim()) || plainText.trim().startsWith('data:image/'); }
+
+      const createBalloonWithImage = (imgSrc) => {
+        e.preventDefault();
+        const newNode = { id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 100, y: -transform.y + window.innerHeight / 2 - 80, width: 200, height: 120, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Center', imageData: imgSrc };
+        updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
+        setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
+      };
+
+      if (foundImageFile) { const reader = new FileReader(); reader.onload = (evt) => createBalloonWithImage(evt.target.result); reader.readAsDataURL(foundImageFile); return; }
+      if (htmlImgSrc) return createBalloonWithImage(htmlImgSrc);
+      if (isImageUrl) return createBalloonWithImage(plainText.trim());
+      if (plainText && plainText.trim()) {
+        e.preventDefault();
+        const newNode = { id: `node-${Date.now()}`, x: -transform.x + window.innerWidth / 2 - 85, y: -transform.y + window.innerHeight / 2 - 37, width: 170, height: 75, text: plainText.trim(), backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 14, textAlignment: 'Left', imageData: null };
+        updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
+        setSelectedNodeId(newNode.id); setSelectedConnectionId(null);
+      }
+    };
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, [safeTabs, activeTabId, transform]);
+
   const handleDeleteSelected = useCallback(() => {
     if (selectedConnectionId) {
       updateActiveTabData((t) => ({ ...t, connections: t.connections.filter((c) => c.id !== selectedConnectionId) }), true);
@@ -185,23 +227,30 @@ export default function App() {
     if (activeTabId === tabId) { setActiveTabId(nextTabs[0].id); fitContentToScreen(nextTabs[0].nodes); }
   }, [safeTabs, activeTabId, pushToHistory, fitContentToScreen]);
 
-  const handleExportImage = () => {
-    const userName = profile?.name ? profile.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : 'usuario';
-    const mapTitle = (currentMap?.title || activeTab?.title || 'mapa-mental').toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const now = new Date();
-    const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
-    exportMapToJpg(activeTab.nodes, activeTab.connections, `${userName}_${mapTitle}_${timestamp}`);
-  };
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
+      if (isInput) return;
 
-  const handleExportFile = async () => {
-    const userName = profile?.name ? profile.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : 'usuario';
-    const mapTitle = (currentMap?.title || activeTab?.title || 'mapa-mental').toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const now = new Date();
-    const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
-    const dataStr = JSON.stringify(tabs, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    await saveFileWithPicker(blob, `${userName}_${mapTitle}_${timestamp}.json`, 'application/json', 'json');
-  };
+      if (e.key === 'Escape') {
+        if (connecting) setConnecting(null);
+        setSelectedNodeId(null); setSelectedConnectionId(null); setIsPanning(false); setDraggingNode(null); setResizingNode(null); setDraggingCP(null);
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault(); if (e.shiftKey) handleRedo(); else handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault(); handleRedo();
+      } else if (e.key === 'p' || e.key === 'P') {
+        fitContentToScreen(activeTab.nodes);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedNodeId || selectedConnectionId) handleDeleteSelected(); else handleDeleteTab(activeTabId);
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const nodeToCopy = activeTab.nodes.find((n) => n.id === selectedNodeId);
+        if (nodeToCopy) setClipboardNode({ ...nodeToCopy });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [connecting, fitContentToScreen, handleDeleteSelected, handleDeleteTab, handleUndo, handleRedo, activeTab, selectedNodeId, selectedConnectionId, clipboardNode, activeTabId]);
 
   const handleWheel = (e) => {
     e.preventDefault();
@@ -387,6 +436,24 @@ export default function App() {
     const node = activeTab.nodes.find((n) => n.id === nodeId);
     const pos = getPortPosition(node, portIndex);
     setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y, connected: false });
+  };
+
+  const handleExportImage = () => {
+    const userName = profile?.name ? profile.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : 'usuario';
+    const mapTitle = (currentMap?.title || activeTab?.title || 'mapa-mental').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const now = new Date();
+    const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+    exportMapToJpg(activeTab.nodes, activeTab.connections, `${userName}_${mapTitle}_${timestamp}`);
+  };
+
+  const handleExportFile = async () => {
+    const userName = profile?.name ? profile.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : 'usuario';
+    const mapTitle = (currentMap?.title || activeTab?.title || 'mapa-mental').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const now = new Date();
+    const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+    const dataStr = JSON.stringify(tabs, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    await saveFileWithPicker(blob, `${userName}_${mapTitle}_${timestamp}.json`, 'application/json', 'json');
   };
 
   const selectedNode = activeTab.nodes.find((n) => n.id === selectedNodeId);
