@@ -23,7 +23,7 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [clipboardNode, setClipboardNode] = useState(null);
 
-  // Histórico Blindado
+  // Histórico Blindado contra Tela Branca
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -32,7 +32,7 @@ export default function App() {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Arrastos e Redimensionamentos Multidirecionais
+  // Arrastos e Redimensionamentos
   const [draggingNode, setDraggingNode] = useState(null);
   const [resizingNode, setResizingNode] = useState(null);
   const [connecting, setConnecting] = useState(null);
@@ -126,7 +126,7 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  // Carga de Mapa Recente
+  // Sessão e Login
   const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -259,48 +259,133 @@ export default function App() {
     }
   };
 
-  // Suporte Global a Colar Imagens e Textos com Ctrl+V no Balão Selecionado
+  // SISTEMA INTELIGENTE DE COLAGEM COM CTRL + V (Imagens da Web, Prints e Textos)
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
-      if (isInput || !selectedNodeId) return;
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
 
-      const items = e.clipboardData?.items;
-      if (items) {
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image') !== -1) {
-            const blob = items[i].getAsFile();
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-              updateActiveTabData((t) => ({
-                ...t,
-                nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: evt.target.result } : n))
-              }), true);
-            };
-            reader.readAsDataURL(blob);
-            e.preventDefault();
-            return;
+      let foundImageFile = null;
+
+      // 1. Arquivos de imagem (Print Screen, cópia direta do explorador)
+      if (clipboardData.files && clipboardData.files.length > 0) {
+        for (let i = 0; i < clipboardData.files.length; i++) {
+          if (clipboardData.files[i].type.startsWith('image/')) {
+            foundImageFile = clipboardData.files[i];
+            break;
           }
         }
       }
 
-      const text = e.clipboardData?.getData('text');
-      if (text && text.trim()) {
-        updateActiveTabData((t) => ({
-          ...t,
-          nodes: t.nodes.map((n) =>
-            n.id === selectedNodeId ? { ...n, text: (n.text ? n.text + '\n' : '') + text.trim() } : n
-          )
-        }), true);
+      // 2. Itens binários (imagem copiada da web)
+      if (!foundImageFile && clipboardData.items) {
+        for (let i = 0; i < clipboardData.items.length; i++) {
+          if (clipboardData.items[i].type.startsWith('image/')) {
+            foundImageFile = clipboardData.items[i].getAsFile();
+            break;
+          }
+        }
+      }
+
+      // 3. Imagem copiada em formato HTML (<img src="...">)
+      let htmlImgSrc = null;
+      if (!foundImageFile) {
+        const html = clipboardData.getData('text/html');
+        if (html) {
+          const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+          if (match && match[1]) {
+            htmlImgSrc = match[1];
+          }
+        }
+      }
+
+      // 4. URL de imagem copiada da internet
+      const plainText = clipboardData.getData('text/plain') || '';
+      let isImageUrl = false;
+      if (!foundImageFile && !htmlImgSrc && plainText) {
+        isImageUrl = /^https?:\/\/.*\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(plainText.trim()) || plainText.trim().startsWith('data:image/');
+      }
+
+      const applyImage = (imgSrc) => {
         e.preventDefault();
+        if (selectedNodeId) {
+          updateActiveTabData((t) => ({
+            ...t,
+            nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: imgSrc } : n))
+          }), true);
+        } else {
+          // Cria um novo balão no centro da tela com a imagem
+          const newNode = {
+            id: `node-${Date.now()}`,
+            x: -transform.x + window.innerWidth / 2 - 100,
+            y: -transform.y + window.innerHeight / 2 - 80,
+            width: 200,
+            height: 120,
+            text: '',
+            backgroundColor: '#FFFFFF',
+            textColor: '#1E293B',
+            fontSize: 14,
+            textAlignment: 'Center',
+            imageData: imgSrc
+          };
+          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
+          setSelectedNodeId(newNode.id);
+        }
+      };
+
+      if (foundImageFile) {
+        const reader = new FileReader();
+        reader.onload = (evt) => applyImage(evt.target.result);
+        reader.readAsDataURL(foundImageFile);
+        return;
+      }
+
+      if (htmlImgSrc) {
+        applyImage(htmlImgSrc);
+        return;
+      }
+
+      if (isImageUrl) {
+        applyImage(plainText.trim());
+        return;
+      }
+
+      // Se for apenas texto comum e o usuário NÃO estiver digitando em uma caixa de texto
+      if (!isInput && plainText && plainText.trim()) {
+        e.preventDefault();
+        if (selectedNodeId) {
+          updateActiveTabData((t) => ({
+            ...t,
+            nodes: t.nodes.map((n) =>
+              n.id === selectedNodeId ? { ...n, text: (n.text ? n.text + '\n' : '') + plainText.trim() } : n
+            )
+          }), true);
+        } else {
+          const newNode = {
+            id: `node-${Date.now()}`,
+            x: -transform.x + window.innerWidth / 2 - 85,
+            y: -transform.y + window.innerHeight / 2 - 37,
+            width: 170,
+            height: 75,
+            text: plainText.trim(),
+            backgroundColor: '#FFFFFF',
+            textColor: '#1E293B',
+            fontSize: 14,
+            textAlignment: 'Left',
+            imageData: null
+          };
+          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
+          setSelectedNodeId(newNode.id);
+        }
       }
     };
 
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
-  }, [selectedNodeId, safeTabs, activeTabId]);
+  }, [selectedNodeId, safeTabs, activeTabId, transform]);
 
-  // Tecla ESC para Cancelar Setas e Desmarcar
+  // Tecla ESC para Cancelar Setas e Atalhos
   const handleDeleteSelected = useCallback(() => {
     if (!selectedNodeId) return;
     updateActiveTabData((t) => ({
@@ -319,7 +404,6 @@ export default function App() {
       if (isInput) return;
 
       if (e.key === 'Escape') {
-        // ESC: Cancela a seta elástica se estiver puxando e desmarca balão
         if (connecting) setConnecting(null);
         setSelectedNodeId(null);
         setIsPanning(false);
