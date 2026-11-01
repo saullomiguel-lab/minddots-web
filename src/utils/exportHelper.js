@@ -156,3 +156,19 @@ export async function exportMapToJpg(nodes, connections, mapTitle = 'mapa-mental
     if (blob) await saveFileWithPicker(blob, `${mapTitle.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`, 'image/jpeg', 'jpg');
   }, 'image/jpeg', 0.95);
 }
+// No final da função exportMapToJpg (dentro do arquivo src/utils/exportHelper.js):
+  
+  canvas.toBlob(
+    async (blob) => {
+      if (blob) {
+        // Formata data e hora
+        const now = new Date();
+        const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+        const fileName = `${mapTitle.toLowerCase().replace(/[^a-z0-9]/g, '-')}_${timestamp}`;
+        await saveFileWithPicker(blob, `${fileName}.jpg`, 'image/jpeg', 'jpg');
+      }
+    },
+    'image/jpeg',
+    0.95
+  );
+}
