@@ -7,7 +7,14 @@ import {
   AlignCenter, 
   AlignRight, 
   AlignJustify,
-  Target
+  Target,
+  Trash2,
+  FolderOpen,
+  Shield,
+  LogIn,
+  LogOut,
+  CheckCloud,
+  Cloud
 } from 'lucide-react';
 import { PASTEL_COLORS } from '../constants';
 
@@ -17,7 +24,15 @@ export default function Toolbar({
   onAddImage, 
   selectedNode, 
   onUpdateSelected,
-  onResetView 
+  onDeleteSelected,
+  onResetView,
+  onOpenMaps,
+  onOpenAdmin,
+  isAdmin,
+  user,
+  onOpenAuth,
+  onLogout,
+  isSaving
 }) {
   const fileInputRef = useRef(null);
 
@@ -33,6 +48,13 @@ export default function Toolbar({
 
   return (
     <header className="top-toolbar">
+      {/* Botão Meus Mapas */}
+      <button className="btn-icon" title="Meus Mapas" onClick={onOpenMaps}>
+        <FolderOpen size={18} />
+      </button>
+
+      <div className="divider" />
+
       {/* Botão Novo Balão */}
       <button className="btn-icon" title="Novo Balão" onClick={onAddNode}>
         <Plus size={18} />
@@ -53,6 +75,17 @@ export default function Toolbar({
       {/* Centralizar Mapa (Atalho P) */}
       <button className="btn-icon" title="Centralizar Mapa (Tecla P)" onClick={onResetView}>
         <Target size={18} />
+      </button>
+
+      {/* Excluir Nó Selecionado */}
+      <button 
+        className="btn-icon" 
+        title="Excluir Balão (Tecla Delete)" 
+        disabled={!selectedNode}
+        onClick={onDeleteSelected}
+        style={{ color: selectedNode ? '#EF4444' : '#CBD5E1' }}
+      >
+        <Trash2 size={18} />
       </button>
 
       {/* Exportar */}
@@ -131,6 +164,31 @@ export default function Toolbar({
           />
         ))}
       </div>
+
+      <div className="divider" />
+
+      {/* Indicador de Nuvem */}
+      <span title={isSaving ? 'Salvando na nuvem...' : 'Salvo na nuvem'} style={{ display: 'flex', alignItems: 'center', color: isSaving ? '#F59E0B' : '#10B981' }}>
+        <Cloud size={16} />
+      </span>
+
+      {/* Painel do Administrador (só visível para Admin) */}
+      {isAdmin && (
+        <button className="btn-icon" title="Painel do Administrador" onClick={onOpenAdmin} style={{ color: '#3B82F6' }}>
+          <Shield size={18} />
+        </button>
+      )}
+
+      {/* Botão Entrar ou Sair */}
+      {user ? (
+        <button className="btn-icon" title="Sair da Conta" onClick={onLogout}>
+          <LogOut size={16} />
+        </button>
+      ) : (
+        <button className="btn-icon" title="Entrar / Cadastrar" onClick={onOpenAuth} style={{ color: '#3B82F6' }}>
+          <LogIn size={16} />
+        </button>
+      )}
     </header>
   );
 }
