@@ -2,9 +2,9 @@
   --bg-canvas: #F8FAFC;
   --node-border: #E2E8F0;
   --text-main: #1E293B;
-  --primary-blue: #3B82F6;
+  --primary-blue: #2563EB;
   --bezier-line: #94A3B8;
-  --bezier-active: #3B82F6;
+  --bezier-active: #2563EB;
 }
 
 body, html, #root {
@@ -16,6 +16,8 @@ body, html, #root {
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   background-color: var(--bg-canvas);
   color: var(--text-main);
+  touch-action: none; /* Impede o scroll padrão do navegador no celular */
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Área Infinita do Canvas */
@@ -27,28 +29,40 @@ body, html, #root {
   cursor: grab;
   background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
   background-size: 24px 24px;
+  touch-action: none;
 }
 
 .canvas-container.panning {
   cursor: grabbing;
 }
 
-/* Barra Superior Minimalista */
+/* Barra Superior Flutuante Totalmente Responsiva */
 .top-toolbar {
   position: fixed;
-  top: 16px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  padding: 6px 10px;
   border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   z-index: 100;
   border: 1px solid #E2E8F0;
+  max-width: calc(100vw - 20px);
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.top-toolbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
 }
 
 /* Botões Planos e Arredondados */
@@ -57,13 +71,14 @@ body, html, #root {
   border: none;
   outline: none;
   border-radius: 8px;
-  padding: 6px 8px;
-  display: flex;
+  padding: 6px 7px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   color: #475569;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .btn-icon:hover {
@@ -76,11 +91,17 @@ body, html, #root {
   color: var(--primary-blue);
 }
 
+.btn-icon:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
 .divider {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: #E2E8F0;
-  margin: 0 4px;
+  margin: 0 3px;
+  flex-shrink: 0;
 }
 
 /* Balões / Cards de Nós */
@@ -92,72 +113,39 @@ body, html, #root {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   border: 1.5px solid var(--node-border);
   cursor: move;
-  padding: 10px 14px;
+  padding: 12px 14px 20px 14px;
   box-sizing: border-box;
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.mind-node.selected {
-  border-color: var(--primary-blue);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
-}
-
-/* Área de Edição Integrada */
-.node-editor {
-  outline: none;
-  border: none;
-  background: transparent;
-  width: 100%;
-  cursor: text;
-  word-break: break-word;
-  white-space: pre-wrap;
-  user-select: text;
-}
-
-/* Portas de Conexão (4 extremidades) */
-.port {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #FFFFFF;
-  border: 2px solid #94A3B8;
-  cursor: crosshair;
-  z-index: 10;
-  transition: transform 0.15s, border-color 0.15s;
-}
-
-.port:hover {
-  transform: scale(1.35);
-  border-color: var(--primary-blue);
-  background: var(--primary-blue);
-}
-
-.port-top { top: -6px; left: 50%; transform: translateX(-50%); }
-.port-right { right: -6px; top: 50%; transform: translateY(-50%); }
-.port-bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
-.port-left { left: -6px; top: 50%; transform: translateY(-50%); }
-
-/* Barra de Abas no Rodapé */
+/* Barra de Abas no Rodapé com Rolagem Suave em Celulares */
 .bottom-tabs {
   position: fixed;
-  bottom: 16px;
-  left: 24px;
+  bottom: 14px;
+  left: 16px;
+  max-width: calc(100vw - 32px);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
   padding: 4px;
   border-radius: 10px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: center;
   gap: 4px;
   z-index: 100;
   border: 1px solid #E2E8F0;
+  overflow-x: auto;
+  box-sizing: border-box;
+  scrollbar-width: none;
+}
+
+.bottom-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-item {
-  padding: 6px 14px;
-  border-radius: 8px;
+  padding: 5px 12px;
+  border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -165,9 +153,38 @@ body, html, #root {
   border: none;
   color: #64748B;
   transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tab-item.active {
   background: #EFF6FF;
   color: var(--primary-blue);
+  font-weight: 600;
+}
+
+/* Ajustes Específicos para Telas Menores e Celulares */
+@media (max-width: 768px) {
+  .top-toolbar {
+    top: 8px;
+    padding: 5px 8px;
+    gap: 3px;
+    border-radius: 10px;
+    max-width: calc(100vw - 16px);
+  }
+
+  .btn-icon {
+    padding: 6px;
+  }
+
+  .bottom-tabs {
+    left: 8px;
+    bottom: 8px;
+    max-width: calc(100vw - 16px);
+  }
+
+  .tab-item {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
 }
