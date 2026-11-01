@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 
-export default function TabsBar({ tabs, activeTabId, onSelectTab, onAddTab, onRenameTab }) {
+export default function TabsBar({ tabs, activeTabId, onSelectTab, onAddTab, onRenameTab, onDeleteTab }) {
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
 
@@ -36,18 +36,32 @@ export default function TabsBar({ tabs, activeTabId, onSelectTab, onAddTab, onRe
                 borderRadius: '6px',
                 border: '1px solid #3B82F6',
                 outline: 'none',
-                width: '80px'
+                width: '90px'
               }}
             />
           ) : (
-            <button
+            <div
               className={`tab-item ${activeTabId === tab.id ? 'active' : ''}`}
               onClick={() => onSelectTab(tab.id)}
               onDoubleClick={(e) => startRename(tab, e)}
               title="Dois cliques para renomear"
             >
-              {tab.title}
-            </button>
+              <span>{tab.title}</span>
+              
+              {/* Botão X para Excluir a Aba (só aparece se houver mais de 1 aba) */}
+              {tabs.length > 1 && (
+                <button
+                  className="tab-close-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteTab(tab.id);
+                  }}
+                  title="Excluir esta aba"
+                >
+                  <X size={14} strokeWidth={2.5} />
+                </button>
+              )}
+            </div>
           )}
         </div>
       ))}
