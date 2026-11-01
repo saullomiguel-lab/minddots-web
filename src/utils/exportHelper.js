@@ -114,7 +114,6 @@ export async function exportMapToJpg(nodes, connections, mapTitle = 'mapa-mental
     const adjustedP1 = { x: p1.x + offsetX, y: p1.y + offsetY, normal: p1.normal };
     const adjustedP2 = { x: p2.x + offsetX, y: p2.y + offsetY, normal: p2.normal };
 
-    // Passa o conn para capturar a curvatura manual!
     const pathData = getBezierPath(adjustedP1, adjustedP2, conn);
 
     ctx.save(); ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
@@ -153,22 +152,6 @@ export async function exportMapToJpg(nodes, connections, mapTitle = 'mapa-mental
   });
 
   canvas.toBlob(async (blob) => {
-    if (blob) await saveFileWithPicker(blob, `${mapTitle.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`, 'image/jpeg', 'jpg');
+    if (blob) await saveFileWithPicker(blob, `${mapTitle}.jpg`, 'image/jpeg', 'jpg');
   }, 'image/jpeg', 0.95);
-}
-// No final da função exportMapToJpg (dentro do arquivo src/utils/exportHelper.js):
-  
-  canvas.toBlob(
-    async (blob) => {
-      if (blob) {
-        // Formata data e hora
-        const now = new Date();
-        const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
-        const fileName = `${mapTitle.toLowerCase().replace(/[^a-z0-9]/g, '-')}_${timestamp}`;
-        await saveFileWithPicker(blob, `${fileName}.jpg`, 'image/jpeg', 'jpg');
-      }
-    },
-    'image/jpeg',
-    0.95
-  );
 }
