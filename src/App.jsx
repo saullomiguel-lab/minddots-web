@@ -21,9 +21,10 @@ export default function App() {
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedConnectionId, setSelectedConnectionId] = useState(null);
   const [clipboardNode, setClipboardNode] = useState(null);
 
-  // Histórico Blindado contra Tela Branca
+  // Histórico Blindado
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -90,6 +91,7 @@ export default function App() {
     setTabs(loadedTabs);
     setActiveTabId(loadedTabs[0]?.id || 'tab-1');
     setSelectedNodeId(null);
+    setSelectedConnectionId(null);
 
     setHistory([JSON.parse(JSON.stringify(loadedTabs))]);
     setHistoryIndex(0);
@@ -113,6 +115,7 @@ export default function App() {
       setTabs(restored);
       setHistoryIndex(newIdx);
       setSelectedNodeId(null);
+      setSelectedConnectionId(null);
     }
   }, [history, historyIndex]);
 
@@ -123,10 +126,11 @@ export default function App() {
       setTabs(restored);
       setHistoryIndex(newIdx);
       setSelectedNodeId(null);
+      setSelectedConnectionId(null);
     }
   }, [history, historyIndex]);
 
-  // Sessão e Login
+  // Carga de Mapa Recente
   const loadRecentOrCreateMap = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -259,16 +263,32 @@ export default function App() {
     }
   };
 
-  // SISTEMA INTELIGENTE DE COLAGEM COM CTRL + V (Imagens da Web, Prints e Textos)
+  // Sincroniza a altura real medida pelo nó
+  const handleHeightSync = (nodeId, actualHeight) => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === activeTabId
+          ? {
+              ...t,
+              nodes: t.nodes.map((n) => (n.id === nodeId ? { ...n, height: actualHeight } : n))
+            }
+          : t
+      )
+    );
+  };
+
+  // SISTEMA INTELIGENTE DE COLAGEM COM CTRL + V: CRIA BALÃO COM IMAGEM OU TEXTO
   useEffect(() => {
     const handleGlobalPaste = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
+      if (isInput) return; // Se estiver digitando em um campo de texto, deixa a digitação fluir normal
+
       const clipboardData = e.clipboardData;
       if (!clipboardData) return;
 
       let foundImageFile = null;
 
-      // 1. Arquivos de imagem (Print Screen, cópia direta do explorador)
+      // 1. Arquivo de Imagem direto
       if (clipboardData.files && clipboardData.files.length > 0) {
         for (let i = 0; i < clipboardData.files.length; i++) {
           if (clipboardData.files[i].type.startsWith('image/')) {
@@ -278,7 +298,7 @@ export default function App() {
         }
       }
 
-      // 2. Itens binários (imagem copiada da web)
+      // 2. Itens binários (print screen ou imagem copiada da internet)
       if (!foundImageFile && clipboardData.items) {
         for (let i = 0; i < clipboardData.items.length; i++) {
           if (clipboardData.items[i].type.startsWith('image/')) {
@@ -288,7 +308,7 @@ export default function App() {
         }
       }
 
-      // 3. Imagem copiada em formato HTML (<img src="...">)
+      // 3. Imagem em formato HTML (<img src="...">)
       let htmlImgSrc = null;
       if (!foundImageFile) {
         const html = clipboardData.getData('text/html');
@@ -300,103 +320,100 @@ export default function App() {
         }
       }
 
-      // 4. URL de imagem copiada da internet
+      // 4. URL de imagem copiada
       const plainText = clipboardData.getData('text/plain') || '';
       let isImageUrl = false;
       if (!foundImageFile && !htmlImgSrc && plainText) {
         isImageUrl = /^https?:\/\/.*\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(plainText.trim()) || plainText.trim().startsWith('data:image/');
       }
 
-      const applyImage = (imgSrc) => {
+      const createBalloonWithImage = (imgSrc) => {
         e.preventDefault();
-        if (selectedNodeId) {
-          updateActiveTabData((t) => ({
-            ...t,
-            nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: imgSrc } : n))
-          }), true);
-        } else {
-          // Cria um novo balão no centro da tela com a imagem
-          const newNode = {
-            id: `node-${Date.now()}`,
-            x: -transform.x + window.innerWidth / 2 - 100,
-            y: -transform.y + window.innerHeight / 2 - 80,
-            width: 200,
-            height: 120,
-            text: '',
-            backgroundColor: '#FFFFFF',
-            textColor: '#1E293B',
-            fontSize: 14,
-            textAlignment: 'Center',
-            imageData: imgSrc
-          };
-          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
-          setSelectedNodeId(newNode.id);
-        }
+        const newNode = {
+          id: `node-${Date.now()}`,
+          x: -transform.x + window.innerWidth / 2 - 100,
+          y: -transform.y + window.innerHeight / 2 - 80,
+          width: 200,
+          height: 120,
+          text: '',
+          backgroundColor: '#FFFFFF',
+          textColor: '#1E293B',
+          fontSize: 14,
+          textAlignment: 'Center',
+          imageData: imgSrc
+        };
+        updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
+        setSelectedNodeId(newNode.id);
+        setSelectedConnectionId(null);
       };
 
       if (foundImageFile) {
         const reader = new FileReader();
-        reader.onload = (evt) => applyImage(evt.target.result);
+        reader.onload = (evt) => createBalloonWithImage(evt.target.result);
         reader.readAsDataURL(foundImageFile);
         return;
       }
 
       if (htmlImgSrc) {
-        applyImage(htmlImgSrc);
+        createBalloonWithImage(htmlImgSrc);
         return;
       }
 
       if (isImageUrl) {
-        applyImage(plainText.trim());
+        createBalloonWithImage(plainText.trim());
         return;
       }
 
-      // Se for apenas texto comum e o usuário NÃO estiver digitando em uma caixa de texto
-      if (!isInput && plainText && plainText.trim()) {
+      // 5. Se for texto simples: Cria um novo balão com o texto
+      if (plainText && plainText.trim()) {
         e.preventDefault();
-        if (selectedNodeId) {
-          updateActiveTabData((t) => ({
-            ...t,
-            nodes: t.nodes.map((n) =>
-              n.id === selectedNodeId ? { ...n, text: (n.text ? n.text + '\n' : '') + plainText.trim() } : n
-            )
-          }), true);
-        } else {
-          const newNode = {
-            id: `node-${Date.now()}`,
-            x: -transform.x + window.innerWidth / 2 - 85,
-            y: -transform.y + window.innerHeight / 2 - 37,
-            width: 170,
-            height: 75,
-            text: plainText.trim(),
-            backgroundColor: '#FFFFFF',
-            textColor: '#1E293B',
-            fontSize: 14,
-            textAlignment: 'Left',
-            imageData: null
-          };
-          updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
-          setSelectedNodeId(newNode.id);
-        }
+        const newNode = {
+          id: `node-${Date.now()}`,
+          x: -transform.x + window.innerWidth / 2 - 85,
+          y: -transform.y + window.innerHeight / 2 - 37,
+          width: 170,
+          height: 75,
+          text: plainText.trim(),
+          backgroundColor: '#FFFFFF',
+          textColor: '#1E293B',
+          fontSize: 14,
+          textAlignment: 'Left',
+          imageData: null
+        };
+        updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
+        setSelectedNodeId(newNode.id);
+        setSelectedConnectionId(null);
       }
     };
 
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
-  }, [selectedNodeId, safeTabs, activeTabId, transform]);
+  }, [safeTabs, activeTabId, transform]);
 
-  // Tecla ESC para Cancelar Setas e Atalhos
+  // Exclusão de Balão OU Linha de Conexão com Delete
   const handleDeleteSelected = useCallback(() => {
-    if (!selectedNodeId) return;
-    updateActiveTabData((t) => ({
-      ...t,
-      nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
-      connections: t.connections.filter(
-        (c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId
-      )
-    }), true);
-    setSelectedNodeId(null);
-  }, [selectedNodeId, safeTabs, activeTabId]);
+    // 1. Se uma conexão estiver selecionada, apaga somente a linha!
+    if (selectedConnectionId) {
+      updateActiveTabData((t) => ({
+        ...t,
+        connections: t.connections.filter((c) => c.id !== selectedConnectionId)
+      }), true);
+      setSelectedConnectionId(null);
+      return;
+    }
+
+    // 2. Se um nó estiver selecionado, apaga o balão e suas linhas
+    if (selectedNodeId) {
+      updateActiveTabData((t) => ({
+        ...t,
+        nodes: t.nodes.filter((n) => n.id !== selectedNodeId),
+        connections: t.connections.filter(
+          (c) => c.fromNodeId !== selectedNodeId && c.toNodeId !== selectedNodeId
+        )
+      }), true);
+      setSelectedNodeId(null);
+    }
+  }, [selectedConnectionId, selectedNodeId, safeTabs, activeTabId]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -406,6 +423,7 @@ export default function App() {
       if (e.key === 'Escape') {
         if (connecting) setConnecting(null);
         setSelectedNodeId(null);
+        setSelectedConnectionId(null);
         setIsPanning(false);
         setDraggingNode(null);
         setResizingNode(null);
@@ -427,7 +445,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [connecting, fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, clipboardNode]);
+  }, [connecting, fitContentToScreen, handleDeleteSelected, handleUndo, handleRedo, activeTab, selectedNodeId, selectedConnectionId, clipboardNode]);
 
   // Zoom
   const handleWheel = (e) => {
@@ -462,6 +480,7 @@ export default function App() {
 
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id);
+    setSelectedConnectionId(null);
   };
 
   const handleAddNode = () => {
@@ -480,6 +499,7 @@ export default function App() {
     };
     updateActiveTabData((t) => ({ ...t, nodes: [...t.nodes, newNode] }), true);
     setSelectedNodeId(newNode.id);
+    setSelectedConnectionId(null);
   };
 
   const handleMouseDown = (e) => {
@@ -487,10 +507,11 @@ export default function App() {
       setIsPanning(true);
       panStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
       setSelectedNodeId(null);
+      setSelectedConnectionId(null);
     }
   };
 
-  // Monitoramento Global
+  // Monitoramento Global do Mouse
   useEffect(() => {
     const onWindowMouseMove = (e) => {
       if (isPanning) {
@@ -547,19 +568,73 @@ export default function App() {
         pushToHistory(safeTabs);
       }
 
+      // Soltou a linha: LIGA A UM BALÃO EXISTENTE OU CRIA UM NOVO
       if (connecting && !connecting.connected) {
-        const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
-        if (fromNode) {
-          const parentCenterX = fromNode.x + (fromNode.width || 170) / 2;
-          const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
-          const dx = connecting.currentX - parentCenterX;
-          const dy = connecting.currentY - parentCenterY;
+        const dropX = connecting.currentX;
+        const dropY = connecting.currentY;
 
+        // 1. Verifica se soltou dentro da área de um balão existente
+        const targetNode = activeTab.nodes.find((n) => {
+          if (n.id === connecting.fromNodeId) return false;
+          const w = n.width || 170;
+          const h = n.height || 75;
+          return dropX >= n.x && dropX <= n.x + w && dropY >= n.y && dropY <= n.y + h;
+        });
+
+        if (targetNode) {
+          // Conecta diretamente ao balão existente!
+          const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
           let bestToPort = 3;
-          if (Math.abs(dy) > Math.abs(dx)) {
-            bestToPort = dy > 0 ? 0 : 2;
-          } else {
-            bestToPort = dx > 0 ? 3 : 1;
+          if (fromNode) {
+            const fcx = fromNode.x + (fromNode.width || 170) / 2;
+            const fcy = fromNode.y + (fromNode.height || 75) / 2;
+            const tcx = targetNode.x + (targetNode.width || 170) / 2;
+            const tcy = targetNode.y + (targetNode.height || 75) / 2;
+            const dx = tcx - fcx;
+            const dy = tcy - fcy;
+
+            if (Math.abs(dy) > Math.abs(dx)) {
+              bestToPort = dy > 0 ? 0 : 2;
+            } else {
+              bestToPort = dx > 0 ? 3 : 1;
+            }
+          }
+
+          const alreadyExists = activeTab.connections.some(
+            (c) =>
+              (c.fromNodeId === connecting.fromNodeId && c.toNodeId === targetNode.id) ||
+              (c.fromNodeId === targetNode.id && c.toNodeId === connecting.fromNodeId)
+          );
+
+          if (!alreadyExists) {
+            const newConn = {
+              id: `conn-${Date.now()}`,
+              fromNodeId: connecting.fromNodeId,
+              fromPortIndex: connecting.fromPortIndex,
+              toNodeId: targetNode.id,
+              toPortIndex: bestToPort
+            };
+            const nextTabs = safeTabs.map((t) =>
+              t.id === activeTabId ? { ...t, connections: [...t.connections, newConn] } : t
+            );
+            setTabs(nextTabs);
+            pushToHistory(nextTabs);
+          }
+        } else {
+          // 2. Soltou no espaço vazio: Cria um novo balão conectado
+          const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
+          let bestToPort = 3;
+          if (fromNode) {
+            const parentCenterX = fromNode.x + (fromNode.width || 170) / 2;
+            const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
+            const dx = connecting.currentX - parentCenterX;
+            const dy = connecting.currentY - parentCenterY;
+
+            if (Math.abs(dy) > Math.abs(dx)) {
+              bestToPort = dy > 0 ? 0 : 2;
+            } else {
+              bestToPort = dx > 0 ? 3 : 1;
+            }
           }
 
           const newNodeW = 170;
@@ -594,6 +669,7 @@ export default function App() {
           setTabs(nextTabs);
           pushToHistory(nextTabs);
           setSelectedNodeId(newNode.id);
+          setSelectedConnectionId(null);
         }
       }
 
@@ -617,6 +693,7 @@ export default function App() {
   const handlePortMouseDown = (e, nodeId, portIndex) => {
     setDraggingNode(null);
     setResizingNode(null);
+    setSelectedConnectionId(null);
 
     const node = activeTab.nodes.find((n) => n.id === nodeId);
     const pos = getPortPosition(node, portIndex);
@@ -685,7 +762,7 @@ export default function App() {
             }), true);
           }
         }}
-        selectedNode={selectedNode}
+        selectedNode={selectedNode || (selectedConnectionId ? { isConnection: true } : null)}
         onUpdateSelected={(patch) => {
           updateActiveTabData((t) => ({
             ...t,
@@ -715,7 +792,7 @@ export default function App() {
         canRedo={historyIndex < history.length - 1}
       />
 
-      {/* SVG Infinito com Setas Direcionais */}
+      {/* SVG Infinito com Setas Direcionais e Linhas Clicáveis */}
       <svg
         style={{
           position: 'absolute',
@@ -742,16 +819,34 @@ export default function App() {
             if (!fromNode || !toNode) return null;
             const p1 = getPortPosition(fromNode, conn.fromPortIndex);
             const p2 = getPortPosition(toNode, conn.toPortIndex);
+            const isConnSelected = selectedConnectionId === conn.id;
+
             return (
-              <path
-                key={conn.id}
-                d={getBezierPath(p1, p2)}
-                fill="none"
-                stroke="#94A3B8"
-                strokeWidth="2"
-                strokeLinecap="round"
-                markerEnd="url(#arrow-fixed)"
-              />
+              <g key={conn.id}>
+                {/* Linha visível que se destaca quando clicada */}
+                <path
+                  d={getBezierPath(p1, p2)}
+                  fill="none"
+                  stroke={isConnSelected ? '#2563EB' : '#94A3B8'}
+                  strokeWidth={isConnSelected ? 3.2 : 2}
+                  strokeLinecap="round"
+                  markerEnd={isConnSelected ? 'url(#arrow-drag)' : 'url(#arrow-fixed)'}
+                  style={{ transition: 'stroke 0.15s, stroke-width 0.15s' }}
+                />
+                {/* Área invisível ampla para facilitar o clique na linha */}
+                <path
+                  d={getBezierPath(p1, p2)}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={16}
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedConnectionId(conn.id);
+                    setSelectedNodeId(null);
+                  }}
+                />
+              </g>
             );
           })}
 
@@ -793,6 +888,7 @@ export default function App() {
               isRoot={index === 0}
               onSelect={(e, id) => {
                 setSelectedNodeId(id);
+                setSelectedConnectionId(null);
               }}
               onStartDrag={(e, id) => {
                 setDraggingNode({
@@ -805,6 +901,7 @@ export default function App() {
               }}
               onPortMouseDown={handlePortMouseDown}
               onPortMouseUp={handlePortMouseUp}
+              onHeightChange={handleHeightSync}
               onResizeStart={(e, id, direction) => {
                 const targetNode = activeTab.nodes.find((n) => n.id === id);
                 if (!targetNode) return;
@@ -843,6 +940,7 @@ export default function App() {
           onSelectTab={(id) => {
             setActiveTabId(id);
             setSelectedNodeId(null);
+            setSelectedConnectionId(null);
           }}
           onAddTab={() => {
             const newId = `tab-${Date.now()}`;
