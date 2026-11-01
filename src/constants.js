@@ -19,23 +19,33 @@ export function getPortPosition(node, portIndex) {
   const h = Math.max(node.height || 75, 60);
 
   switch (portIndex) {
-    case 0: return { x: node.x + w / 2, y: node.y - 8, normal: { x: 0, y: -1 } };     // Topo
-    case 1: return { x: node.x + w + 8, y: node.y + h / 2, normal: { x: 1, y: 0 } }; // Direita
-    case 2: return { x: node.x + w / 2, y: node.y + h + 8, normal: { x: 0, y: 1 } }; // Base
-    case 3: return { x: node.x - 8, y: node.y + h / 2, normal: { x: -1, y: 0 } };    // Esquerda
-    default: return { x: node.x + w / 2, y: node.y + h / 2, normal: { x: 1, y: 0 } };
+    case 0: return { x: node.x + w / 2, y: node.y - 8, normal: { x: 0, y: -1 } };     // Topo (sai pra cima)
+    case 1: return { x: node.x + w + 8, y: node.y + h / 2, normal: { x: 1, y: 0 } }; // Direita (sai pra direita)
+    case 2: return { x: node.x + w / 2, y: node.y + h + 8, normal: { x: 0, y: 1 } }; // Base (sai pra baixo)
+    case 3: return { x: node.x - 8, y: node.y + h / 2, normal: { x: -1, y: 0 } };    // Esquerda (sai pra esquerda)
+    default: return { x: node.x + w / 2, y: node.y + h / 2, normal: { x: 0, y: 0 } };
   }
 }
 
-// Curva suave de Bézier que respeita os vetores de entrada para a ponta da seta apontar perfeitamente
+// Curva de Bézier suave que se adapta dinamicamente ao ângulo real (Vertical e Horizontal)
 export function getBezierPath(p1, p2) {
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
   const dist = Math.hypot(dx, dy);
-  const curvature = Math.min(Math.max(dist * 0.45, 35), 220);
+  const curvature = Math.min(Math.max(dist * 0.45, 30), 220);
 
-  const n1 = p1.normal || { x: dx >= 0 ? 1 : -1, y: 0 };
-  const n2 = p2.normal || { x: dx >= 0 ? -1 : 1, y: 0 };
+  // Direção de saída da porta de origem
+  const n1 = p1.normal || (Math.abs(dx) > Math.abs(dy) ? { x: dx >= 0 ? 1 : -1, y: 0 } : { x: 0, y: dy >= 0 ? 1 : -1 });
+
+  // Direção de entrada na porta de destino
+  let n2;
+  if (p2.normal) {
+    n2 = p2.normal;
+  } else {
+    // Durante o arraste com o mouse: aponta exatamente na direção em que o cursor está se movendo
+    const angle = Math.atan2(dy, dx);
+    n2 = { x: -Math.cos(angle), y: -Math.sin(angle) };
+  }
 
   const cp1x = p1.x + n1.x * curvature;
   const cp1y = p1.y + n1.y * curvature;
