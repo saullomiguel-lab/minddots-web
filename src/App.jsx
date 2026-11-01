@@ -39,7 +39,7 @@ export default function App() {
     setProfile(data || null);
   };
 
-  // 1. Ao abrir o site: se não estiver logado, abre a tela de login na hora!
+  // 1. Sessão inicial e login ao abrir
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
@@ -47,7 +47,7 @@ export default function App() {
         loadUserProfile(session.user.id);
         setIsMapsOpen(true);
       } else {
-        setIsAuthOpen(true); // Login na tela inicial se deslogado!
+        setIsAuthOpen(true);
       }
     });
 
@@ -65,6 +65,33 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // 2. Temporizador de 1 Hora de Inatividade
+  useEffect(() => {
+    if (!user) return;
+
+    const ONE_HOUR = 60 * 60 * 1000; // 3.600.000 milissegundos
+    let inactivityTimer;
+
+    const resetTimer = () => {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(async () => {
+        alert('Sua sessão expirou por inatividade (1 hora sem uso). Por favor, entre novamente.');
+        await supabase.auth.signOut();
+      }, ONE_HOUR);
+    };
+
+    // Monitora interações do usuário para reiniciar a contagem
+    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+    events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
+
+    resetTimer(); // Inicia a contagem de 1 hora
+
+    return () => {
+      clearTimeout(inactivityTimer);
+      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [user]);
 
   const handleSelectMap = (map) => {
     setCurrentMap(map);
@@ -277,7 +304,7 @@ export default function App() {
         fromNodeId: connecting.fromNodeId,
         fromPortIndex: connecting.fromPortIndex,
         toNodeId: newNode.id,
-        toPortIndex: 3 // Conecta na porta esquerda
+        toPortIndex: 3
       };
 
       updateActiveTabData((t) => ({
@@ -389,7 +416,7 @@ export default function App() {
         isSaving={isSaving}
       />
 
-      {/* SVG com Marcador de Seta Tangencial Perfeito */}
+      {/* SVG com Setas */}
       <svg
         style={{
           position: 'absolute',
