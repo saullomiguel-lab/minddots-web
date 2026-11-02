@@ -5,43 +5,41 @@ import {
   AlignLeft, 
   AlignCenter, 
   AlignRight, 
-  AlignJustify,
-  Target,
-  Trash2,
-  FolderOpen,
-  Shield,
-  LogIn,
-  LogOut,
-  Cloud,
-  Undo2,
-  Redo2,
-  FileImage,
-  FileDown,
-  Users
+  AlignJustify, 
+  Target, 
+  Trash2, 
+  FolderOpen, 
+  Shield, 
+  LogIn, 
+  LogOut, 
+  Undo2, 
+  Redo2, 
+  FileImage, 
+  FileDown, 
+  Users 
 } from 'lucide-react';
 import { PASTEL_COLORS } from '../constants';
 
 export default function Toolbar({ 
   onAddNode, 
-  onExportImage,
-  onExportFile,
+  onExportImage, 
+  onExportFile, 
   onAddImage, 
   selectedNode, 
-  onUpdateSelected,
-  onDeleteSelected,
-  onResetView,
-  onOpenMaps,
-  onOpenAdmin,
-  onOpenTeam,
-  isAdmin,
-  user,
-  onOpenAuth,
-  onLogout,
-  isSaving,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo
+  onUpdateSelected, 
+  onDeleteSelected, 
+  onResetView, 
+  onOpenMaps, 
+  onOpenAdmin, 
+  onOpenTeam, 
+  isAdmin, 
+  user, 
+  onOpenAuth, 
+  onLogout, 
+  onUndo, 
+  onRedo, 
+  canUndo, 
+  canRedo 
 }) {
   const fileInputRef = useRef(null);
 
@@ -59,19 +57,10 @@ export default function Toolbar({
 
   return (
     <>
-      {/* 1. BARRA SUPERIOR CLEAN (SÓ SISTEMA) */}
+      {/* 1. BARRA SUPERIOR ULTRA-CLEAN */}
       <header className="top-toolbar">
         <button className="btn-icon" title="Meus Mapas" onClick={onOpenMaps}>
           <FolderOpen size={18} />
-        </button>
-
-        <div className="divider" />
-
-        <button className="btn-icon" title="Desfazer (Ctrl + Z)" disabled={!canUndo} onClick={onUndo} style={{ opacity: canUndo ? 1 : 0.4 }}>
-          <Undo2 size={17} />
-        </button>
-        <button className="btn-icon" title="Refazer (Ctrl + Y)" disabled={!canRedo} onClick={onRedo} style={{ opacity: canRedo ? 1 : 0.4 }}>
-          <Redo2 size={17} />
         </button>
 
         <div className="divider" />
@@ -82,12 +71,6 @@ export default function Toolbar({
         <button className="btn-icon" title="Exportar Arquivo (JSON)" onClick={onExportFile}>
           <FileDown size={18} />
         </button>
-
-        <div className="divider" />
-
-        <span title={isSaving ? 'Salvando...' : 'Salvo na nuvem'} style={{ display: 'flex', alignItems: 'center', color: isSaving ? '#F59E0B' : '#10B981', flexShrink: 0 }}>
-          <Cloud size={16} />
-        </span>
 
         <div className="divider" />
 
@@ -116,17 +99,50 @@ export default function Toolbar({
 
       <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" style={{ display: 'none' }} />
 
-      {/* 2. BOTÕES FLUTUANTES (ENCAIXAR E NOVA IDEIA) */}
+      {/* 2. BOTÕES FLUTUANTES (AS 4 BOLINHAS EMPILHADAS) */}
       <div className="floating-action-container">
-        <button className="fab-btn secondary" title="Encaixar na Tela (Tecla P)" onClick={onResetView}>
+        {/* Bolinha 1: Avançar (Refazer) */}
+        <button 
+          className="fab-btn secondary" 
+          title="Refazer (Ctrl + Y)" 
+          disabled={!canRedo} 
+          onClick={onRedo}
+          style={{ opacity: canRedo ? 1 : 0.4 }}
+        >
+          <Redo2 size={19} />
+        </button>
+
+        {/* Bolinha 2: Voltar (Desfazer) */}
+        <button 
+          className="fab-btn secondary" 
+          title="Desfazer (Ctrl + Z)" 
+          disabled={!canUndo} 
+          onClick={onUndo}
+          style={{ opacity: canUndo ? 1 : 0.4 }}
+        >
+          <Undo2 size={19} />
+        </button>
+
+        {/* Bolinha 3: Centralizar */}
+        <button 
+          className="fab-btn secondary" 
+          title="Encaixar na Tela (Tecla P)" 
+          onClick={onResetView}
+        >
           <Target size={20} />
         </button>
-        <button className="fab-btn" title="Nova Ideia (+)" onClick={onAddNode}>
+
+        {/* Bolinha 4: Nova Ideia */}
+        <button 
+          className="fab-btn" 
+          title="Nova Ideia (+)" 
+          onClick={onAddNode}
+        >
           <Plus size={24} />
         </button>
       </div>
 
-      {/* 3. GAVETA DE FORMATAÇÃO CONTEXTUAL (SÓ SURGE QUANDO UM BALÃO É SELECIONADO) */}
+      {/* 3. GAVETA DE FORMATAÇÃO CONTEXTUAL (SÓ SURGE QUANDO BALÃO É SELECIONADO) */}
       <div className={`format-drawer ${selectedNode ? 'active' : ''}`}>
         {isNodeActive ? (
           <>
@@ -169,7 +185,7 @@ export default function Toolbar({
           </>
         ) : selectedNode?.isConnection ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px' }}>
-            <span style={{ fontSize: '12px', color: '#64748B' }}>Linha de conexão selecionada</span>
+            <span style={{ fontSize: '12px', color: '#64748B' }}>Linha selecionada</span>
             <button className="btn-icon" onClick={onDeleteSelected} style={{ color: '#EF4444', gap: '4px' }}>
               <Trash2 size={16} /> <span style={{ fontSize: '12px', fontWeight: 600 }}>Excluir Linha</span>
             </button>
