@@ -41,8 +41,27 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
   };
 
   return (
-    <div className="user-badge-container">
-      {/* Nuvem com status de salvamento em tempo real */}
+    <div
+      style={{
+        position: 'fixed',
+        top: '60px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 120,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        backgroundColor: '#FFFFFF',
+        border: '1.5px solid #CBD5E1',
+        borderRadius: '9999px',
+        padding: '5px 16px',
+        boxShadow: '0 3px 12px rgba(0, 0, 0, 0.08)',
+        userSelect: 'none',
+        pointerEvents: 'auto',
+        transition: 'all 0.15s ease'
+      }}
+    >
+      {/* Nuvem com status de salvamento */}
       <span
         title={isSaving ? 'Salvando na nuvem...' : 'Salvo na nuvem'}
         style={{
@@ -55,9 +74,9 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
         <Cloud size={15} />
       </span>
 
-      {/* Campo de Edição ou Nome do Usuário */}
+      {/* Campo de Edição ou Nome no Balãozinho */}
       {isEditing ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <input
             type="text"
             value={nameInput}
@@ -69,33 +88,37 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
               fontSize: '13px',
               fontWeight: 600,
               color: '#1E293B',
-              border: '1.5px solid #2563EB',
-              borderRadius: '6px',
-              padding: '2px 8px',
+              border: 'none',
               outline: 'none',
-              width: '130px',
-              background: '#FFFFFF'
+              background: 'transparent',
+              width: '120px',
+              padding: 0
             }}
           />
           <button
             onMouseDown={handleSave}
             style={{
-              background: 'transparent',
+              background: '#10B981',
               border: 'none',
-              color: '#10B981',
-              cursor: 'pointer',
+              borderRadius: '50%',
+              width: '20px',
+              height: '20px',
               display: 'flex',
-              padding: '2px'
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FFFFFF',
+              cursor: 'pointer',
+              padding: 0
             }}
           >
-            <Check size={16} />
+            <Check size={12} strokeWidth={3} />
           </button>
         </div>
       ) : (
         <div
           onDoubleClick={() => setIsEditing(true)}
           onTouchStart={handleTouch}
-          title="Dois cliques para alterar seu nome"
+          title="Dois cliques (ou 2 toques) para alterar seu nome"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -103,10 +126,10 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
             cursor: 'pointer'
           }}
         >
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>
             {profile?.name || 'Usuário'}
           </span>
-          <Pencil size={11} color="#94A3B8" style={{ opacity: 0.6 }} />
+          <Pencil size={11} color="#94A3B8" />
         </div>
       )}
     </div>
