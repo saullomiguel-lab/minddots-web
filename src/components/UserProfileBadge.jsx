@@ -41,26 +41,8 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: '56px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 98,
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '8px',
-        background: 'rgba(255, 255, 255, 0.94)',
-        backdropFilter: 'blur(8px)',
-        border: '1px solid #E2E8F0',
-        borderRadius: '20px',
-        padding: '3px 12px',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-        userSelect: 'none'
-      }}
-    >
-      {/* Nuvem com status de salvamento */}
+    <div className="user-badge-container">
+      {/* Nuvem com status de salvamento em tempo real */}
       <span
         title={isSaving ? 'Salvando na nuvem...' : 'Salvo na nuvem'}
         style={{
@@ -73,7 +55,7 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
         <Cloud size={15} />
       </span>
 
-      {/* Nome do Usuário ou Campo de Edição */}
+      {/* Campo de Edição ou Nome do Usuário */}
       {isEditing ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <input
@@ -87,11 +69,12 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
               fontSize: '13px',
               fontWeight: 600,
               color: '#1E293B',
-              border: '1px solid #2563EB',
+              border: '1.5px solid #2563EB',
               borderRadius: '6px',
-              padding: '2px 6px',
+              padding: '2px 8px',
               outline: 'none',
-              width: '120px'
+              width: '130px',
+              background: '#FFFFFF'
             }}
           />
           <button
@@ -102,10 +85,10 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
               color: '#10B981',
               cursor: 'pointer',
               display: 'flex',
-              padding: 0
+              padding: '2px'
             }}
           >
-            <Check size={15} />
+            <Check size={16} />
           </button>
         </div>
       ) : (
@@ -116,7 +99,7 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '5px',
+            gap: '6px',
             cursor: 'pointer'
           }}
         >
