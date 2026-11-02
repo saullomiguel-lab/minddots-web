@@ -7,6 +7,7 @@ import ForcePasswordChangeModal from './components/ForcePasswordChangeModal';
 import AdminPanel from './components/AdminPanel';
 import MapsManagerModal from './components/MapsManagerModal';
 import TeamPanel from './components/TeamPanel';
+import UserProfileBadge from './components/UserProfileBadge';
 import { getPortPosition, getBezierPath, getBezierControlPoints } from './constants';
 import { exportMapToJpg, saveFileWithPicker } from './utils/exportHelper';
 import { supabase } from './supabaseClient';
@@ -45,6 +46,21 @@ export default function App() {
   const loadUserProfile = async (userId) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     setProfile(data || null);
+  };
+
+  const handleUpdateUserName = async (newName) => {
+    if (!user || !newName.trim()) return;
+    const cleanName = newName.trim();
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ name: cleanName })
+        .eq('id', user.id);
+      if (error) throw error;
+      setProfile((prev) => (prev ? { ...prev, name: cleanName } : prev));
+    } catch (err) {
+      alert('Erro ao atualizar nome: ' + err.message);
+    }
   };
 
   const fitContentToScreen = useCallback((nodes) => {
@@ -96,26 +112,34 @@ export default function App() {
     }
   }, [history, historyIndex]);
 
-  const loadRecentOrCreateMap = useCallback(async (userId) => {
+  const loadRecentOrCreateMap = useCallback(async (userId, profileData) => {
     try {
       const { data, error } = await supabase.from('maps').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1);
       if (error) throw error;
       if (data && data.length > 0) { handleSelectMap(data[0]); } else {
         const newMapData = { tabs: [{ id: `tab-${Date.now()}`, title: 'Mapa 1', nodes: [{ id: `node-${Date.now()}`, x: 350, y: 220, width: 170, height: 75, text: '', backgroundColor: '#FFFFFF', textColor: '#1E293B', fontSize: 16, textAlignment: 'Center', imageData: null }], connections: [] }] };
-        const { data: createdMap, error: createError } = await supabase.from('maps').insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData }]).select().single();
+        const { data: createdMap, error: createError } = await supabase.from('maps').insert([{ user_id: userId, title: 'Meu Primeiro Mapa', data: newMapData, team_id: profileData?.team_id || null }]).select().single();
         if (!createError && createdMap) { handleSelectMap(createdMap); }
       }
     } catch (err) { console.error('Erro ao carregar mapa recente:', err); }
   }, [handleSelectMap]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user || null);
-      if (session?.user) { loadUserProfile(session.user.id); loadRecentOrCreateMap(session.user.id); } else { setIsAuthOpen(true); }
+      if (session?.user) {
+        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        setProfile(p || null);
+        loadRecentOrCreateMap(session.user.id, p);
+      } else { setIsAuthOpen(true); }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user || null);
-      if (session?.user) { loadUserProfile(session.user.id); loadRecentOrCreateMap(session.user.id); } else { setProfile(null); setCurrentMap(null); setTabs([]); setIsAuthOpen(true); }
+      if (session?.user) {
+        const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        setProfile(p || null);
+        loadRecentOrCreateMap(session.user.id, p);
+      } else { setProfile(null); setCurrentMap(null); setTabs([]); setIsAuthOpen(true); }
     });
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
@@ -126,7 +150,7 @@ export default function App() {
     let inactivityTimer;
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(async () => { alert('Sua sessão expirou por inatividade (1 hora sem uso). Por favor, entre novamente.'); await supabase.auth.signOut(); }, ONE_HOUR);
+      inactivityTimer = setTimeout(async () => { alert('Sua sessão expirou por inatividade. Entre novamente.'); await supabase.auth.signOut(); }, ONE_HOUR);
     };
     const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
     events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
@@ -213,7 +237,8 @@ export default function App() {
 
   const handleDeleteTab = useCallback((tabId) => {
     if (safeTabs.length <= 1) { alert('Você não pode excluir a última aba do mapa.'); return; }
-    if (!window.confirm('Tem certeza que deseja excluir esta aba e seu conteúdo?')) return;
+    const tabToDel = safeTabs.find(t => t.id === tabId);
+    if (!window.confirm(`Tem certeza que deseja excluir a aba "${tabToDel?.title || 'Selecionada'}"?`)) return;
     const nextTabs = safeTabs.filter(t => t.id !== tabId);
     setTabs(nextTabs); pushToHistory(nextTabs);
     if (activeTabId === tabId) { setActiveTabId(nextTabs[0].id); fitContentToScreen(nextTabs[0].nodes); }
@@ -223,7 +248,6 @@ export default function App() {
     const handleKeyDown = (e) => {
       const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
       if (isInput) return;
-
       if (e.key === 'Escape') {
         if (connecting) setConnecting(null);
         setSelectedNodeId(null); setSelectedConnectionId(null); setIsPanning(false); setDraggingNode(null); setResizingNode(null); setDraggingCP(null);
@@ -430,7 +454,6 @@ export default function App() {
     setConnecting({ fromNodeId: nodeId, fromPortIndex: portIndex, currentX: pos.x, currentY: pos.y, connected: false });
   };
 
-  // RESTAURAÇÃO OBRIGATÓRIA DA FUNÇÃO PARA EVITAR ERRO DE REFERÊNCIA NO MINDNODE
   const handlePortMouseUp = () => {};
 
   const handleExportImage = () => {
@@ -459,13 +482,22 @@ export default function App() {
       <Toolbar 
         onAddNode={handleAddNode} onExportImage={handleExportImage} onExportFile={handleExportFile} 
         onAddImage={(img) => { if (selectedNodeId) { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true); } }}
-        selectedNode={selectedNodeId ? activeTab.nodes.find(n => n.id === selectedNodeId) : (selectedConnectionId ? { isConnection: true } : null)}
+        selectedNode={selectedNode || (selectedConnectionId ? { isConnection: true } : null)}
         onUpdateSelected={(patch) => { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => { if (n.id !== selectedNodeId) return n; return { ...n, backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor, fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize, textAlignment: patch.align !== undefined ? patch.align : n.textAlignment }; }) }), true); }}
         onDeleteSelected={handleDeleteSelected} onResetView={() => fitContentToScreen(activeTab.nodes)}
         onOpenMaps={() => setIsMapsOpen(true)} onOpenAdmin={() => setIsAdminOpen(true)} onOpenTeam={() => setIsTeamOpen(true)}
         isAdmin={isUserAdminOrTeamOwner} user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={() => supabase.auth.signOut()}
         isSaving={isSaving} onUndo={handleUndo} onRedo={handleRedo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
       />
+
+      {/* Crachá com o Nome do Usuário Centralizado e a Nuvem ao Lado */}
+      <UserProfileBadge
+        user={user}
+        profile={profile}
+        isSaving={isSaving}
+        onUpdateName={handleUpdateUserName}
+      />
+
       <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
         <defs>
           <marker id="arrow-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#94A3B8" /></marker>
