@@ -1,25 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Users, Plus, LogIn, LogOut, X, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { Users, Plus, LogIn, LogOut, X, CheckCircle, AlertCircle, Trash2, Pencil, Check } from 'lucide-react';
 
 export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate }) {
   const [mode, setMode] = useState('menu'); // 'menu' | 'create' | 'join'
   const [teamCode, setTeamCode] = useState('');
   const [currentTeamCode, setCurrentTeamCode] = useState('');
+  const [isEditingCode, setIsEditingCode] = useState(false);
+  const [newCodeInput, setNewCodeInput] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  // Busca o nome do código da equipe atual, se o usuário estiver em uma
   useEffect(() => {
     if (isOpen) {
       setMode('menu');
       setError('');
       setMessage('');
       setTeamCode('');
-      
+      setIsEditingCode(false);
+      setNewCodeInput('');
+
       if (profile?.team_id) {
-        supabase.from('teams').select('code').eq('id', profile.team_id).single()
+        supabase
+          .from('teams')
+          .select('code')
+          .eq('id', profile.team_id)
+          .single()
           .then(({ data }) => {
             if (data) setCurrentTeamCode(data.code);
           });
@@ -29,13 +37,13 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
 
   if (!isOpen) return null;
 
+  // 1. Criar nova equipe
   const handleCreateTeam = async (e) => {
     e.preventDefault();
     setError('');
     setMessage('');
-    
-    // Validação rígida: apenas minúsculas e números
-    const cleanCode = teamCode.trim();
+
+    const cleanCode = teamCode.trim().toLowerCase();
     if (!/^[a-z0-9]+$/.test(cleanCode)) {
       setError('O código deve conter apenas letras minúsculas e números, sem espaços (ex: mkt2026).');
       return;
@@ -46,10 +54,10 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
       const { data, error: rpcError } = await supabase.rpc('create_team', { team_code: cleanCode });
       if (rpcError) throw rpcError;
       if (data && data.startsWith('ERRO')) throw new Error(data);
-      
+
       setMessage('Equipe criada com sucesso! Você é o administrador.');
-      onProfileUpdate(); // Atualiza o perfil no App principal
-      setTimeout(() => setMode('menu'), 2000);
+      onProfileUpdate();
+      setTimeout(() => setMode('menu'), 1800);
     } catch (err) {
       setError(err.message || 'Erro ao criar equipe.');
     } finally {
@@ -57,6 +65,7 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
     }
   };
 
+  // 2. Entrar em uma equipe existente
   const handleJoinTeam = async (e) => {
     e.preventDefault();
     setError('');
@@ -64,13 +73,13 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
     setLoading(true);
 
     try {
-      const { data, error: rpcError } = await supabase.rpc('join_team', { team_code: teamCode.trim() });
+      const { data, error: rpcError } = await supabase.rpc('join_team', { team_code: teamCode.trim().toLowerCase() });
       if (rpcError) throw rpcError;
       if (data && data.startsWith('ERRO')) throw new Error(data);
 
       setMessage('Você entrou na equipe com sucesso!');
       onProfileUpdate();
-      setTimeout(() => setMode('menu'), 2000);
+      setTimeout(() => setMode('menu'), 1800);
     } catch (err) {
       setError(err.message || 'Erro ao entrar na equipe.');
     } finally {
@@ -78,19 +87,68 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
     }
   };
 
+  // 3. Dono altera o código da equipe
+  const handleUpdateCode = async (e) => {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+
+    const clean = newCodeInput.trim().toLowerCase();
+    if (!/^[a-z0-9]+$/.test(clean)) {
+      setError('O novo código deve conter apenas letras minúsculas e números, sem espaços.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('update_team_code', { new_code: clean });
+      if (rpcError) throw rpcError;
+      if (data && data.startsWith('ERRO')) throw new Error(data);
+
+      setCurrentTeamCode(clean);
+      setMessage('Código da equipe atualizado com sucesso!');
+      setIsEditingCode(false);
+      setNewCodeInput('');
+      onProfileUpdate();
+    } catch (err) {
+      setError(err.message || 'Erro ao atualizar código.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 4. Membro sai da equipe (NUNCA deleta a equipe)
   const handleLeaveTeam = async () => {
-    const actionText = profile?.is_team_owner ? 'EXCLUIR sua equipe e desvincular todos os membros' : 'SAIR desta equipe';
-    if (!window.confirm(`Tem certeza que deseja ${actionText}? Você voltará a ser "Apenas Eu".`)) return;
+    if (!window.confirm('Tem certeza que deseja sair desta equipe? Você voltará a ser "Apenas Eu".')) return;
 
     setLoading(true);
     try {
       const { data, error: rpcError } = await supabase.rpc('leave_team');
       if (rpcError) throw rpcError;
-      
-      setMessage('Ação realizada com sucesso!');
+
+      setMessage('Você saiu da equipe com sucesso!');
       onProfileUpdate();
     } catch (err) {
-      setError(err.message || 'Erro ao processar saída.');
+      setError(err.message || 'Erro ao sair da equipe.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 5. Dono exclui a equipe inteira
+  const handleDeleteTeam = async () => {
+    if (!window.confirm('ATENÇÃO: Deseja EXCLUIR sua equipe? Todos os membros serão desvinculados e você voltará a ser "Apenas Eu".')) return;
+
+    setLoading(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('delete_team');
+      if (rpcError) throw rpcError;
+      if (data && data.startsWith('ERRO')) throw new Error(data);
+
+      setMessage('Equipe excluída com sucesso!');
+      onProfileUpdate();
+    } catch (err) {
+      setError(err.message || 'Erro ao excluir equipe.');
     } finally {
       setLoading(false);
     }
@@ -112,7 +170,7 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
         display: 'flex', flexDirection: 'column'
       }}>
         {/* Cabeçalho */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ padding: '8px', background: '#EFF6FF', borderRadius: '10px', color: '#2563EB' }}>
               <Users size={22} />
@@ -122,7 +180,7 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
                 Minha Equipe
               </h2>
               <span style={{ fontSize: '12px', color: '#64748B' }}>
-                {profile?.team_id ? 'Gerencie sua participação' : 'Crie ou participe de uma equipe'}
+                {profile?.team_id ? 'Gerencie sua equipe' : 'Crie ou participe de uma equipe'}
               </span>
             </div>
           </div>
@@ -130,34 +188,90 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
         </div>
 
         {error && (
-          <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', display: 'flex', gap: '6px' }}>
+          <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px', borderRadius: '8px', fontSize: '13px', marginBottom: '14px', display: 'flex', gap: '6px' }}>
             <AlertCircle size={16} style={{ flexShrink: 0 }} /> {error}
           </div>
         )}
         {message && (
-          <div style={{ background: '#DCFCE7', color: '#166534', padding: '10px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', display: 'flex', gap: '6px' }}>
+          <div style={{ background: '#DCFCE7', color: '#166534', padding: '10px', borderRadius: '8px', fontSize: '13px', marginBottom: '14px', display: 'flex', gap: '6px' }}>
             <CheckCircle size={16} style={{ flexShrink: 0 }} /> {message}
           </div>
         )}
 
-        {/* ESTADO 1: Usuário JÁ ESTÁ em uma equipe */}
+        {/* ESTADO 1: Usuário já está em uma equipe */}
         {profile?.team_id ? (
-          <div style={{ textAlign: 'center', padding: '10px 0' }}>
-            <div style={{ display: 'inline-flex', padding: '12px 24px', background: '#F1F5F9', borderRadius: '12px', border: '1.5px dashed #CBD5E1', marginBottom: '16px' }}>
-              <div>
-                <span style={{ fontSize: '11px', color: '#64748B', display: 'block', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Código da Equipe</span>
-                <span style={{ fontSize: '20px', fontWeight: 800, color: '#1E293B', letterSpacing: '1px' }}>{currentTeamCode || '...'}</span>
-              </div>
-            </div>
+          <div style={{ textAlign: 'center', padding: '6px 0' }}>
             
-            <p style={{ fontSize: '14px', color: '#475569', marginBottom: '24px' }}>
-              Você está na equipe <strong>{currentTeamCode}</strong>.
-              <br />
-              {profile?.is_team_owner ? 'Você é o Administrador desta equipe.' : 'Você é um membro desta equipe.'}
+            {/* Bloco do Código da Equipe com botão de editar para o Dono */}
+            <div style={{
+              display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
+              padding: '12px 20px', background: '#F8FAFC', borderRadius: '14px',
+              border: '1.5px dashed #CBD5E1', marginBottom: '16px', minWidth: '220px'
+            }}>
+              <span style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                Código da Equipe
+              </span>
+
+              {isEditingCode ? (
+                <form onSubmit={handleUpdateCode} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                  <input
+                    type="text"
+                    value={newCodeInput}
+                    autoFocus
+                    placeholder="Novo código..."
+                    onChange={(e) => setNewCodeInput(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+                    style={{
+                      fontSize: '15px', fontWeight: 700, color: '#1E293B',
+                      border: '1.5px solid #2563EB', borderRadius: '8px', padding: '4px 8px',
+                      outline: 'none', width: '130px', textAlign: 'center'
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    style={{ background: '#10B981', color: '#FFF', border: 'none', borderRadius: '8px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    title="Salvar novo código"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingCode(false)}
+                    style={{ background: '#E2E8F0', color: '#475569', border: 'none', borderRadius: '8px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    title="Cancelar"
+                  >
+                    <X size={16} />
+                  </button>
+                </form>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '22px', fontWeight: 800, color: '#1E293B', letterSpacing: '1px' }}>
+                    {currentTeamCode || '...'}
+                  </span>
+                  {profile?.is_team_owner && (
+                    <button
+                      onClick={() => { setIsEditingCode(true); setNewCodeInput(currentTeamCode); }}
+                      style={{ background: 'transparent', border: 'none', color: '#2563EB', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                      title="Alterar código da equipe"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <p style={{ fontSize: '13px', color: '#475569', marginBottom: '22px', lineHeight: '1.4' }}>
+              {profile?.is_team_owner ? (
+                <>Você é o <strong>Administrador desta equipe</strong>. Você pode alterar o código acima ou gerenciar membros no painel de administração.</>
+              ) : (
+                <>Você é um <strong>membro desta equipe</strong>. Seus mapas marcados com equipe estão disponíveis para seu administrador.</>
+              )}
             </p>
 
+            {/* Botão de Sair (Membro) ou Excluir (Dono) */}
             <button
-              onClick={handleLeaveTeam}
+              onClick={profile?.is_team_owner ? handleDeleteTeam : handleLeaveTeam}
               disabled={loading}
               style={{
                 width: '100%', padding: '12px', borderRadius: '10px',
@@ -167,11 +281,11 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
               }}
             >
               {profile?.is_team_owner ? <Trash2 size={18} /> : <LogOut size={18} />}
-              {profile?.is_team_owner ? 'Excluir Equipe' : 'Sair da Equipe'}
+              {profile?.is_team_owner ? 'Excluir Minha Equipe' : 'Sair da Equipe'}
             </button>
           </div>
         ) : (
-          /* ESTADO 2: Usuário NÃO ESTÁ em uma equipe ("Apenas Eu") */
+          /* ESTADO 2: Usuário "Apenas Eu" */
           mode === 'menu' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <button
@@ -185,7 +299,7 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
                 <div style={{ background: '#2563EB', color: '#FFF', padding: '6px', borderRadius: '8px' }}><Plus size={18} /></div>
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ fontSize: '15px' }}>Criar Nova Equipe</div>
-                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', fontWeight: 400 }}>Seja o dono de uma nova equipe.</div>
+                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', fontWeight: 400 }}>Seja o dono e administre outros membros.</div>
                 </div>
               </button>
 
@@ -200,16 +314,16 @@ export default function TeamPanel({ isOpen, onClose, profile, onProfileUpdate })
                 <div style={{ background: '#E2E8F0', color: '#475569', padding: '6px', borderRadius: '8px' }}><LogIn size={18} /></div>
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ fontSize: '15px' }}>Entrar em uma Equipe</div>
-                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', fontWeight: 400 }}>Vincule-se a uma equipe existente.</div>
+                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', fontWeight: 400 }}>Insira o código fornecido pelo seu administrador.</div>
                 </div>
               </button>
             </div>
           ) : (
-            /* Formulário de Criação ou Entrada */
+            /* Formulário para Criar ou Entrar */
             <form onSubmit={mode === 'create' ? handleCreateTeam : handleJoinTeam} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px dashed #CBD5E1' }}>
                 <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: '1.4' }}>
-                  {mode === 'create' 
+                  {mode === 'create'
                     ? 'Escolha um código simples (só letras minúsculas e números, sem espaços). Ex: mkt2026'
                     : 'Digite o código da equipe que você deseja entrar.'}
                 </p>
