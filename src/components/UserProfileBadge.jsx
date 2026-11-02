@@ -6,6 +6,17 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
   const [nameInput, setNameInput] = useState('');
   const lastTapRef = useRef(0);
 
+  // Detecta se a tela é celular para dar o respiro correto
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     setNameInput(profile?.name || 'Usuário');
   }, [profile?.name]);
@@ -44,7 +55,8 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
     <div
       style={{
         position: 'fixed',
-        top: '60px',
+        // Respiro adaptativo: 72px no celular e 60px no PC
+        top: isMobile ? '72px' : '60px',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 120,
@@ -54,11 +66,11 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
         backgroundColor: '#FFFFFF',
         border: '1.5px solid #CBD5E1',
         borderRadius: '9999px',
-        padding: '5px 16px',
+        padding: isMobile ? '4px 14px' : '5px 16px',
         boxShadow: '0 3px 12px rgba(0, 0, 0, 0.08)',
         userSelect: 'none',
         pointerEvents: 'auto',
-        transition: 'all 0.15s ease'
+        transition: 'top 0.2s ease, all 0.15s ease'
       }}
     >
       {/* Nuvem com status de salvamento */}
@@ -91,7 +103,7 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
               border: 'none',
               outline: 'none',
               background: 'transparent',
-              width: '120px',
+              width: isMobile ? '110px' : '125px',
               padding: 0
             }}
           />
