@@ -19,7 +19,7 @@ export default function App() {
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Estados de Inatividade
+  // Estados de Inatividade (30 minutos + 30s de contagem)
   const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
   const [inactivityCountdown, setInactivityCountdown] = useState(30);
 
@@ -142,10 +142,10 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
-  // Temporizador de Inatividade
+  // Temporizador de Inatividade (30 minutos)
   useEffect(() => {
     if (!user) return;
-    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutos
+    const INACTIVITY_LIMIT = 30 * 60 * 1000;
 
     const updateActivity = () => {
       if (!isInactivityModalOpen) {
@@ -493,18 +493,40 @@ export default function App() {
       setIsPanning(false); setDraggingNode(null); setResizingNode(null); setConnecting(null); setDraggingCP(null);
     };
 
-    const onWindowMouseMove = (e) => onPointerMove(e.clientX, e.clientY);
+    // SENSOR DE HARDWARE ANTI-SETA GRUDADA (e.buttons === 0)
+    const onWindowMouseMove = (e) => {
+      if (e.buttons === 0 && (connecting || draggingNode || resizingNode || draggingCP)) {
+        onPointerUp();
+        return;
+      }
+      onPointerMove(e.clientX, e.clientY);
+    };
+
     const onWindowMouseUp = () => onPointerUp();
-    const onWindowTouchMove = (e) => { if (e.touches && e.touches.length > 0) { const touch = e.touches[0]; onPointerMove(touch.clientX, touch.clientY); if (draggingNode || connecting || resizingNode || draggingCP) { if (e.cancelable) e.preventDefault(); } } };
+
+    const onWindowTouchMove = (e) => {
+      if (e.touches && e.touches.length > 0) {
+        const touch = e.touches[0];
+        onPointerMove(touch.clientX, touch.clientY);
+        if (draggingNode || connecting || resizingNode || draggingCP) {
+          if (e.cancelable) e.preventDefault();
+        }
+      }
+    };
+
     const onWindowTouchEnd = () => onPointerUp();
 
     if (isPanning || draggingNode || resizingNode || connecting || draggingCP) {
-      window.addEventListener('mousemove', onWindowMouseMove); window.addEventListener('mouseup', onWindowMouseUp);
-      window.addEventListener('touchmove', onWindowTouchMove, { passive: false }); window.addEventListener('touchend', onWindowTouchEnd);
+      window.addEventListener('mousemove', onWindowMouseMove);
+      window.addEventListener('mouseup', onWindowMouseUp);
+      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
+      window.addEventListener('touchend', onWindowTouchEnd);
     }
     return () => {
-      window.removeEventListener('mousemove', onWindowMouseMove); window.removeEventListener('mouseup', onWindowMouseUp);
-      window.removeEventListener('touchmove', onWindowTouchMove); window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('mousemove', onWindowMouseMove);
+      window.removeEventListener('mouseup', onWindowMouseUp);
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
     };
   }, [isPanning, draggingNode, resizingNode, connecting, draggingCP, transform, safeTabs, activeTab, activeTabId, pushToHistory]);
 
@@ -541,7 +563,7 @@ export default function App() {
   return (
     <div ref={containerRef} className={`canvas-container ${isPanning ? 'panning' : ''}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDoubleClick={handleDoubleClickCanvas} onContextMenu={(e) => e.preventDefault()}>
       
-      {/* 1. BARRA DE FERRAMENTAS E CONTROLES (ISOLADOS E INDEPENDENTES) */}
+      {/* 1. BARRA DE FERRAMENTAS E CONTROLES */}
       <Toolbar 
         onAddNode={handleAddNode} onExportImage={handleExportImage} onExportFile={handleExportFile} 
         onAddImage={(img) => { if (selectedNodeId) { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true); } }}
@@ -553,7 +575,7 @@ export default function App() {
         onUndo={handleUndo} onRedo={handleRedo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
       />
 
-      {/* 2. CRACHÁ DO NOME DO USUÁRIO CENTRALIZADO (INDEPENDENTE, NUNCA SOBREPÕE) */}
+      {/* 2. CRACHÁ DO NOME DO USUÁRIO CENTRALIZADO COM A NUVEM */}
       <UserProfileBadge
         user={user}
         profile={profile}
