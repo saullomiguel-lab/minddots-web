@@ -18,11 +18,10 @@ export async function saveFileWithPicker(blob, suggestedName, mimeType, extensio
       await writable.close();
       return;
     } catch (err) {
-      if (err.name === 'AbortError') return; // Usuário cancelou
+      if (err.name === 'AbortError') return;
     }
   }
 
-  // Fallback para navegadores sem showSaveFilePicker
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -33,7 +32,7 @@ export async function saveFileWithPicker(blob, suggestedName, mimeType, extensio
   URL.revokeObjectURL(url);
 }
 
-// Quebra o texto respeitando os limites da largura útil do balão
+// Algoritmo blindado: quebra por palavras e por caracteres (impossível vazar horizontalmente)
 function wrapTextLines(ctx, text, maxWidth) {
   if (!text) return [];
   const paragraphs = text.split('\n');
@@ -49,11 +48,33 @@ function wrapTextLines(ctx, text, maxWidth) {
     let currentLine = '';
 
     for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const metrics = ctx.measureText(testLine);
+      let word = words[i];
 
-      if (metrics.width > maxWidth && currentLine !== '') {
+      // Se uma única palavra for maior que a largura do balão (ex: links), fatia por caractere
+      if (ctx.measureText(word).width > maxWidth) {
+        if (currentLine) {
+          result.push({ text: currentLine, isLastInParagraph: false });
+          currentLine = '';
+        }
+
+        let chunk = '';
+        for (let c = 0; c < word.length; c++) {
+          const testChunk = chunk + word[c];
+          if (ctx.measureText(testChunk).width > maxWidth && chunk !== '') {
+            result.push({ text: chunk, isLastInParagraph: false });
+            chunk = word[c];
+          } else {
+            chunk = testChunk;
+          }
+        }
+        currentLine = chunk;
+        continue;
+      }
+
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = ctx.measureText(testLine).width;
+
+      if (testWidth > maxWidth && currentLine !== '') {
         result.push({ text: currentLine, isLastInParagraph: false });
         currentLine = word;
       } else {
@@ -69,7 +90,7 @@ function wrapTextLines(ctx, text, maxWidth) {
   return result;
 }
 
-// Desenha a linha aplicando alinhamento perfeito (inclusive Justificado real)
+// Desenha a linha respeitando milimetricamente a largura útil (sem esticar além do limite)
 function drawAlignedLine(ctx, line, x, y, maxW, align, isLastInParagraph) {
   if (!line || !line.trim()) return;
 
@@ -80,7 +101,6 @@ function drawAlignedLine(ctx, line, x, y, maxW, align, isLastInParagraph) {
     ctx.textAlign = 'right';
     ctx.fillText(line, x + maxW, y);
   } else if (align === 'justify' && !isLastInParagraph) {
-    // Justificação real: distribui os espaços restantes entre as palavras da linha
     const words = line.trim().split(/\s+/);
     if (words.length <= 1) {
       ctx.textAlign = 'left';
@@ -96,8 +116,8 @@ function drawAlignedLine(ctx, line, x, y, maxW, align, isLastInParagraph) {
       const remainingSpace = maxW - totalWordsWidth;
       const spacePerGap = remainingSpace / (words.length - 1);
 
-      // Se a linha couber normalmente, distribui o espaço
-      if (spacePerGap > 0 && spacePerGap < 40) {
+      // Trava de segurança: só distribui espaço se não estourar a linha
+      if (spacePerGap > 0 && spacePerGap < 35) {
         ctx.textAlign = 'left';
         let currentX = x;
         words.forEach((w, i) => {
@@ -110,13 +130,12 @@ function drawAlignedLine(ctx, line, x, y, maxW, align, isLastInParagraph) {
       }
     }
   } else {
-    // Alinhamento à esquerda ou última linha do parágrafo justificado
     ctx.textAlign = 'left';
     ctx.fillText(line, x, y);
   }
 }
 
-// Renderiza todo o mapa em JPG com alta resolução (2.5x)
+// Renderiza todo o mapa em JPG com alta resolução (2.5x) e proteção total
 export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-mental') {
   if (!nodes || nodes.length === 0) {
     alert('O mapa mental está vazio.');
@@ -141,7 +160,7 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
     })
   );
 
-  // 2. Mede tipografia e calcula a altura real de cada balão para que nada vaze
+  // 2. Mede tipografia e calcula a altura real necessária de cada balão
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
 
@@ -153,7 +172,8 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
     measureCtx.font = `500 ${fontSize}px 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif`;
 
     const paddingX = 14;
-    const maxTextWidth = nw - (paddingX * 2);
+    // Margem interna de segurança extra (-6px) para evitar qualquer toque na borda
+    const maxTextWidth = Math.max(nw - (paddingX * 2) - 6, 80);
     const wrappedLines = wrapTextLines(measureCtx, node.text || '', maxTextWidth);
 
     const img = loadedImages[node.id];
@@ -162,12 +182,12 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
       const maxImgW = maxTextWidth;
       const maxImgH = 180;
       const ratio = Math.min(maxImgW / img.width, maxImgH / img.height);
-      imgH = (img.height * ratio) + 8;
+      imgH = (img.height * ratio) + 10;
     }
 
     const textH = wrappedLines.length * lineHeight;
-    // Padding: 12px topo + imagem + texto + 20px respiro na base
-    const neededHeight = 12 + imgH + textH + 20;
+    // Altura calculada com 26px de folga na base
+    const neededHeight = 14 + imgH + textH + 26;
     const finalHeight = Math.max(node.height || 75, neededHeight, 60);
 
     return {
@@ -184,7 +204,7 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
     };
   });
 
-  // 3. Calcula os limites do mapa inteiro
+  // 3. Limites totais do mapa
   const padding = 70;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
@@ -198,9 +218,7 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
   const contentW = Math.max(maxX - minX + padding * 2, 400);
   const contentH = Math.max(maxY - minY + padding * 2, 300);
 
-  // Escala de alta densidade (2.5x) para textos nítidos
   const scale = 2.5;
-
   const canvas = document.createElement('canvas');
   canvas.width = contentW * scale;
   canvas.height = contentH * scale;
@@ -208,7 +226,7 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
 
   ctx.scale(scale, scale);
 
-  // Fundo oficial do MindDots
+  // Fundo do mapa
   ctx.fillStyle = '#F8FAFC';
   ctx.fillRect(0, 0, contentW, contentH);
 
@@ -261,14 +279,14 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
     ctx.restore();
   });
 
-  // 5. Desenha os balões, imagens e texto perfeitamente contido
+  // 5. Desenha os balões com proteção de recorte (ctx.clip)
   nodesWithComputedLayout.forEach((node) => {
     const nx = node.x + offsetX;
     const ny = node.y + offsetY;
     const nw = node.width;
     const nh = node.effectiveHeight;
 
-    // Sombra do balão
+    // Sombra suave externa
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.06)';
     ctx.shadowBlur = 8;
@@ -282,15 +300,23 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
     ctx.restore();
 
     // Borda do balão
+    ctx.save();
     ctx.strokeStyle = '#E2E8F0';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(nx, ny, nw, nh, 10);
     ctx.stroke();
+    ctx.restore();
+
+    // ESCUDO DE RECORTE (CLIPPING): Nada pode ser desenhado fora deste retângulo
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(nx, ny, nw, nh, 10);
+    ctx.clip();
 
     let textTop = ny + 12;
 
-    // Imagem preservando proporção
+    // Imagem proporcional
     const img = loadedImages[node.id];
     if (img) {
       const maxImgW = node.maxTextWidth;
@@ -305,23 +331,26 @@ export async function exportMapToJpg(nodes, connections, fullTitle = 'mapa-menta
       textTop = imgY + renderH + 8;
     }
 
-    // Texto com quebra automática e alinhamento (inclusive Justificado real)
+    // Texto rigorosamente contido
     if (node.computedLines.length > 0) {
       ctx.fillStyle = node.textColor || '#1E293B';
       ctx.font = `500 ${node.fontSize}px 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif`;
       ctx.textBaseline = 'top';
 
       const align = (node.textAlignment || 'Left').toLowerCase();
-      const textStartX = nx + node.paddingX;
+      const textStartX = nx + node.paddingX + 3; // +3px centraliza o respiro interno
 
       node.computedLines.forEach((item, idx) => {
         const lineY = textTop + (idx * node.lineHeight);
         drawAlignedLine(ctx, item.text, textStartX, lineY, node.maxTextWidth, align, item.isLastInParagraph);
       });
     }
+
+    // Fecha o escudo de recorte
+    ctx.restore();
   });
 
-  // 6. Converte para JPG preservando o nome original com underlines e data/hora
+  // 6. Converte para JPG preservando o nome original
   canvas.toBlob(
     async (blob) => {
       if (blob) {
