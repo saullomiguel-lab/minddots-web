@@ -5,6 +5,7 @@ import MindNode from './components/MindNode';
 import UserProfileBadge from './components/UserProfileBadge';
 import CanvasConnections from './components/CanvasConnections';
 import AppModals from './components/AppModals';
+import InactivityModal from './components/InactivityModal';
 import { getPortPosition, getBezierControlPoints } from './constants';
 import { exportMapToJpg, saveFileWithPicker } from './utils/exportHelper';
 import { supabase } from './supabaseClient';
@@ -17,6 +18,10 @@ export default function App() {
   const [isMapsOpen, setIsMapsOpen] = useState(false);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Estados do Pop-up de Inatividade (30 minutos + 30 segundos de contagem)
+  const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
+  const [inactivityCountdown, setInactivityCountdown] = useState(30);
 
   const [currentMap, setCurrentMap] = useState(null);
   const [tabs, setTabs] = useState([]);
@@ -137,20 +142,79 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
+  // SISTEMA ROBUSTO DE INATIVIDADE (30 MINUTOS + COMPATÍVEL COM TELA BLOQUEADA)
   useEffect(() => {
     if (!user) return;
-    const ONE_HOUR = 60 * 60 * 1000;
-    let inactivityTimer;
-    const resetTimer = () => {
-      clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(async () => { alert('Sua sessão expirou por inatividade. Entre novamente.'); await supabase.auth.signOut(); }, ONE_HOUR);
-    };
-    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
-    events.forEach((eventName) => window.addEventListener(eventName, resetTimer));
-    resetTimer();
-    return () => { clearTimeout(inactivityTimer); events.forEach((eventName) => window.removeEventListener(eventName, resetTimer)); };
-  }, [user]);
 
+    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutos
+
+    const updateActivity = () => {
+      if (!isInactivityModalOpen) {
+        localStorage.setItem('minddots_last_active', Date.now().toString());
+      }
+    };
+
+    if (!localStorage.getItem('minddots_last_active')) {
+      localStorage.setItem('minddots_last_active', Date.now().toString());
+    }
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+    events.forEach((ev) => window.addEventListener(ev, updateActivity, { passive: true }));
+
+    // Checa inatividade periodicamente e sempre que a aba/tela é desbloqueada
+    const checkInactivity = () => {
+      if (isInactivityModalOpen) return;
+      const lastActive = parseInt(localStorage.getItem('minddots_last_active') || '0', 10);
+      if (Date.now() - lastActive >= INACTIVITY_LIMIT) {
+        setIsInactivityModalOpen(true);
+        setInactivityCountdown(30);
+      }
+    };
+
+    const interval = setInterval(checkInactivity, 2000);
+    window.addEventListener('focus', checkInactivity);
+    document.addEventListener('visibilitychange', checkInactivity);
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, updateActivity));
+      clearInterval(interval);
+      window.removeEventListener('focus', checkInactivity);
+      document.removeEventListener('visibilitychange', checkInactivity);
+    };
+  }, [user, isInactivityModalOpen]);
+
+  // Contador Regressivo de 30 segundos
+  useEffect(() => {
+    if (!isInactivityModalOpen) return;
+
+    const timer = setInterval(() => {
+      setInactivityCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsInactivityModalOpen(false);
+          supabase.auth.signOut();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isInactivityModalOpen]);
+
+  const handleStayLoggedIn = () => {
+    localStorage.setItem('minddots_last_active', Date.now().toString());
+    setIsInactivityModalOpen(false);
+    setInactivityCountdown(30);
+  };
+
+  const handleManualLogout = () => {
+    setIsInactivityModalOpen(false);
+    localStorage.removeItem('minddots_last_active');
+    supabase.auth.signOut();
+  };
+
+  // Auto-salvamento na Nuvem
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -297,8 +361,7 @@ export default function App() {
       const newScale = Math.min(Math.max(touchStateRef.current.startScale * factor, 0.25), 3);
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2; const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       setTransform((prev) => {
-        const newX = midX - (midX - prev.x) * (newScale / prev.scale);
-        const newY = midY - (midY - prev.y) * (newScale / prev.scale);
+        const newX = midX - (midX - prev.x) * (newScale / prev.scale); const newY = midY - (midY - prev.y) * (newScale / prev.scale);
         return { x: newX, y: newY, scale: newScale };
       });
     }
@@ -491,7 +554,7 @@ export default function App() {
           onUpdateSelected={(patch) => { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => { if (n.id !== selectedNodeId) return n; return { ...n, backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor, fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize, textAlignment: patch.align !== undefined ? patch.align : n.textAlignment }; }) }), true); }}
           onDeleteSelected={handleDeleteSelected} onResetView={() => fitContentToScreen(activeTab.nodes)}
           onOpenMaps={() => setIsMapsOpen(true)} onOpenAdmin={() => setIsAdminOpen(true)} onOpenTeam={() => setIsTeamOpen(true)}
-          isAdmin={isUserAdminOrTeamOwner} user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={() => supabase.auth.signOut()}
+          isAdmin={isUserAdminOrTeamOwner} user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={handleManualLogout}
           onUndo={handleUndo} onRedo={handleRedo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
         />
 
@@ -504,7 +567,7 @@ export default function App() {
         />
       </div>
 
-      {/* 2. CAMADA DAS CONEXÕES E SETAS (MÓDULO ISOLADO E LEVE) */}
+      {/* 2. CAMADA DAS CONEXÕES E SETAS */}
       <CanvasConnections
         connections={activeTab.connections}
         nodes={activeTab.nodes}
@@ -528,7 +591,7 @@ export default function App() {
               node={node} isSelected={selectedNodeId === node.id} isRoot={index === 0}
               onSelect={(e, id) => { setSelectedNodeId(id); setSelectedConnectionId(null); }}
               onStartDrag={(pos, id) => { setDraggingNode({ id, startX: pos.clientX, startY: pos.clientY, origX: node.x, origY: node.y }); }}
-              onPortMouseDown={handlePortMouseDown} onPortMouseUp={handlePortMouseUp} onHeightChange={handleHeightSync}
+              onPortMouseDown={handlePortMouseDown} onPortMouseUp={handlePortMouseUp} onHeightSync={handleHeightSync}
               onResizeStart={(pos, id, dir) => { const n = activeTab.nodes.find(x => x.id === id); setResizingNode({ id, direction: dir, startX: pos.clientX, startY: pos.clientY, origX: n.x, origY: n.y, origW: n.width || 170, origH: n.height || 75 }); }}
               onUpdateText={(id, text) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n)) }), true)}
               onPaste={(id, patch) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }), true)}
@@ -553,7 +616,7 @@ export default function App() {
         />
       )}
 
-      {/* 5. MÓDULO DE TODAS AS JANELAS MODAIS (ISOLADO E LEVE) */}
+      {/* 5. MÓDULO DE TODAS AS JANELAS MODAIS */}
       <AppModals
         user={user}
         profile={profile}
@@ -567,6 +630,14 @@ export default function App() {
         setIsMapsOpen={setIsMapsOpen}
         onSelectMap={handleSelectMap}
         loadUserProfile={loadUserProfile}
+      />
+
+      {/* 6. POP-UP DE SEGURANÇA POR INATIVIDADE (30 MINUTOS + 30s REGRESSIVOS) */}
+      <InactivityModal
+        isOpen={isInactivityModalOpen}
+        countdown={inactivityCountdown}
+        onStay={handleStayLoggedIn}
+        onLogout={handleManualLogout}
       />
     </div>
   );
