@@ -35,23 +35,12 @@ body, html, #root {
   cursor: grabbing;
 }
 
-/* 1. BARRA SUPERIOR */
-.top-wrapper {
+/* 1. BARRA SUPERIOR CENTRALIZADA */
+.top-toolbar {
   position: fixed;
-  top: 10px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  z-index: 100;
-  pointer-events: none;
-  max-width: calc(100vw - 20px);
-}
-
-.top-toolbar {
-  pointer-events: auto;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);
   padding: 6px 14px;
@@ -60,7 +49,9 @@ body, html, #root {
   display: flex;
   align-items: center;
   gap: 6px;
+  z-index: 100;
   border: 1px solid #E2E8F0;
+  max-width: calc(100vw - 24px);
   box-sizing: border-box;
   overflow-x: auto;
   scrollbar-width: none;
@@ -133,22 +124,7 @@ body, html, #root {
   border-color: #FCA5A5;
 }
 
-/* CRACHÁ DO NOME DO USUÁRIO */
-.user-badge-container {
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(8px);
-  border: 1px solid #E2E8F0;
-  border-radius: 20px;
-  padding: 4px 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  user-select: none;
-}
-
-/* 2. BOTÕES FLUTUANTES (CANTO INFERIOR ESQUERDO) */
+/* 2. AS 4 BOLINHAS FLUTUANTES (CANTO INFERIOR ESQUERDO) */
 .floating-action-container {
   position: fixed;
   left: 18px;
@@ -298,10 +274,8 @@ body, html, #root {
 
 /* AJUSTES PARA CELULAR */
 @media (max-width: 768px) {
-  .top-wrapper {
-    top: 8px;
-  }
   .top-toolbar {
+    top: 8px;
     padding: 6px 10px;
     gap: 4px;
   }
@@ -320,7 +294,6 @@ body, html, #root {
     bottom: 64px;
     width: calc(100vw - 20px);
   }
-  /* No celular, o botão isolado se esconde para não poluir a tela */
   .top-exit-btn {
     display: none !important;
   }
