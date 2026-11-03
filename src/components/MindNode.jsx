@@ -20,10 +20,6 @@ export default function MindNode({
   const nodeRef = useRef(null);
   const pasteFileRef = useRef(null);
 
-  // Sensores de Distinção: 1 Clique Digita | Arrastar Move
-  const dragStartPosRef = useRef(null);
-  const hasDraggedRef = useRef(false);
-
   useEffect(() => {
     setEditText(node.text || '');
   }, [node.text]);
@@ -52,13 +48,12 @@ export default function MindNode({
     onUpdateText(node.id, editText.trim());
   };
 
-  // ENTER AGORA PULA LINHA LIVREMENTE (Escape cancela e clique fora salva)
+  // ENTER PULA LINHA LIVREMENTE
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
       setEditText(node.text || '');
       setIsEditing(false);
     }
-    // O Enter não é mais bloqueado: pula linha nativamente!
   };
 
   const handleInput = (e) => {
@@ -69,26 +64,23 @@ export default function MindNode({
     }
   };
 
-  // MECÂNICA DINÂMICA NO COMPUTADOR: 1 CLIQUE DIGITA | ARRASTAR MOVE
+  // MECÂNICA NO COMPUTADOR: 1 CLIQUE DIGITA | ARRASTAR MOVE (COORDENADAS BLINDADAS)
   const handleMouseDownNode = (e) => {
     if (e.button !== 0) return;
     onSelect(e, node.id);
 
-    if (isEditing) return; // Se já está digitando, deixa o cursor do texto agir
+    if (isEditing) return; // Se já estiver digitando, permite selecionar o texto
 
-    dragStartPosRef.current = { x: e.clientX, y: e.clientY };
-    hasDraggedRef.current = false;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let hasMoved = false;
 
     const onMouseMove = (moveEvt) => {
-      if (!dragStartPosRef.current) return;
-      const dist = Math.hypot(
-        moveEvt.clientX - dragStartPosRef.current.x,
-        moveEvt.clientY - dragStartPosRef.current.y
-      );
-      // Se moveu mais de 4 pixels, ativa o modo de arrastar o balão
-      if (dist > 4) {
-        hasDraggedRef.current = true;
-        onStartDrag(dragStartPosRef.current, node.id);
+      const dist = Math.hypot(moveEvt.clientX - startX, moveEvt.clientY - startY);
+      if (dist > 4 && !hasMoved) {
+        hasMoved = true;
+        // Envia clientX e clientY com precisão absoluta
+        onStartDrag({ clientX: startX, clientY: startY }, node.id);
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
       }
@@ -97,36 +89,32 @@ export default function MindNode({
     const onMouseUp = () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
-      // Se soltou o clique sem ter arrastado: abre para digitar na hora!
-      if (!hasDraggedRef.current) {
+      if (!hasMoved) {
         setIsEditing(true);
       }
-      dragStartPosRef.current = null;
     };
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  // MECÂNICA DINÂMICA NO CELULAR (TOUCH): 1 TOQUE DIGITA | ARRASTAR MOVE
+  // MECÂNICA NO CELULAR: 1 TOQUE DIGITA | ARRASTAR MOVE
   const handleTouchStartNode = (e) => {
     if (isEditing || e.touches.length !== 1) return;
     onSelect(e, node.id);
 
     const t = e.touches[0];
-    dragStartPosRef.current = { x: t.clientX, y: t.clientY };
-    hasDraggedRef.current = false;
+    const startX = t.clientX;
+    const startY = t.clientY;
+    let hasMoved = false;
 
     const onTouchMove = (moveEvt) => {
-      if (!dragStartPosRef.current || moveEvt.touches.length !== 1) return;
+      if (moveEvt.touches.length !== 1) return;
       const mt = moveEvt.touches[0];
-      const dist = Math.hypot(
-        mt.clientX - dragStartPosRef.current.x,
-        mt.clientY - dragStartPosRef.current.y
-      );
-      if (dist > 6) {
-        hasDraggedRef.current = true;
-        onStartDrag({ clientX: dragStartPosRef.current.x, clientY: dragStartPosRef.current.y }, node.id);
+      const dist = Math.hypot(mt.clientX - startX, mt.clientY - startY);
+      if (dist > 6 && !hasMoved) {
+        hasMoved = true;
+        onStartDrag({ clientX: startX, clientY: startY }, node.id);
         window.removeEventListener('touchmove', onTouchMove);
         window.removeEventListener('touchend', onTouchEnd);
       }
@@ -135,10 +123,9 @@ export default function MindNode({
     const onTouchEnd = () => {
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onTouchEnd);
-      if (!hasDraggedRef.current) {
+      if (!hasMoved) {
         setIsEditing(true);
       }
-      dragStartPosRef.current = null;
     };
 
     window.addEventListener('touchmove', onTouchMove);
@@ -204,6 +191,8 @@ export default function MindNode({
     e.target.value = '';
   };
 
+  const safeX = Number(node.x) || 0;
+  const safeY = Number(node.y) || 0;
   const placeholder = isRoot ? '💡 Ideia Principal' : 'Nova Ideia';
   const hasText = Boolean(editText && editText.trim().length > 0);
   const hasImage = Boolean(node.imageData);
@@ -213,8 +202,8 @@ export default function MindNode({
       ref={nodeRef}
       style={{
         position: 'absolute',
-        left: `${node.x}px`,
-        top: `${node.y}px`,
+        left: `${safeX}px`,
+        top: `${safeY}px`,
         width: `${Math.max(node.width || 170, 120)}px`,
         minHeight: `${Math.max(node.height || 75, 60)}px`,
         backgroundColor: node.backgroundColor || '#FFFFFF',
