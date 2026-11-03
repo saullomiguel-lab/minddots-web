@@ -36,11 +36,22 @@ body, html, #root {
 }
 
 /* 1. BARRA SUPERIOR */
-.top-toolbar {
+.top-wrapper {
   position: fixed;
-  top: 12px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+  pointer-events: none;
+  max-width: calc(100vw - 20px);
+}
+
+.top-toolbar {
+  pointer-events: auto;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);
   padding: 6px 14px;
@@ -49,9 +60,7 @@ body, html, #root {
   display: flex;
   align-items: center;
   gap: 6px;
-  z-index: 100;
   border: 1px solid #E2E8F0;
-  max-width: calc(100vw - 24px);
   box-sizing: border-box;
   overflow-x: auto;
   scrollbar-width: none;
@@ -96,21 +105,64 @@ body, html, #root {
   flex-shrink: 0;
 }
 
-/* 2. BOTÕES FLUTUANTES (NOVA IDEIA E CENTRALIZAR) */
+/* BOTÃO SAIR ISOLADO NO CANTO SUPERIOR DIREITO (PC) */
+.top-exit-btn {
+  position: fixed;
+  top: 12px;
+  right: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  padding: 6px 14px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 100;
+  border: 1px solid #E2E8F0;
+  color: #DC2626;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.top-exit-btn:hover {
+  background: #FEF2F2;
+  border-color: #FCA5A5;
+}
+
+/* CRACHÁ DO NOME DO USUÁRIO */
+.user-badge-container {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  border: 1px solid #E2E8F0;
+  border-radius: 20px;
+  padding: 4px 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  user-select: none;
+}
+
+/* 2. BOTÕES FLUTUANTES (CANTO INFERIOR ESQUERDO) */
 .floating-action-container {
   position: fixed;
-  right: 18px;
-  bottom: 68px;
+  left: 18px;
+  bottom: 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   z-index: 95;
 }
 
 .fab-btn {
-  width: 46px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: #2563EB;
   color: #FFFFFF;
@@ -124,7 +176,7 @@ body, html, #root {
 }
 
 .fab-btn:hover {
-  transform: scale(1.05);
+  transform: scale(1.06);
 }
 
 .fab-btn:active {
@@ -138,7 +190,7 @@ body, html, #root {
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* 3. GAVETA CONTEXTUAL (SÓ SURGE QUANDO BALÃO É SELECIONADO) */
+/* 3. GAVETA CONTEXTUAL */
 .format-drawer {
   display: none;
   position: fixed;
@@ -185,7 +237,7 @@ body, html, #root {
   position: fixed;
   bottom: 12px;
   left: 16px;
-  max-width: calc(100vw - 86px);
+  max-width: calc(100vw - 32px);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
   padding: 4px;
@@ -224,7 +276,6 @@ body, html, #root {
   font-weight: 600;
 }
 
-/* Botão de Excluir (X) dentro da aba */
 .tab-close-btn {
   display: inline-flex;
   align-items: center;
@@ -245,47 +296,32 @@ body, html, #root {
   opacity: 1;
 }
 
-/* AJUSTES PARA TELAS ESTREITAS (CELULAR) - MAIS AMPLOS E LEGÍVEIS */
+/* AJUSTES PARA CELULAR */
 @media (max-width: 768px) {
+  .top-wrapper {
+    top: 8px;
+  }
   .top-toolbar {
-    top: 12px;
-    padding: 8px 10px;
-    gap: 8px;
-    border-radius: 14px;
+    padding: 6px 10px;
+    gap: 4px;
   }
   .btn-icon {
-    padding: 8px;
+    padding: 6px 7px;
   }
-  .bottom-tabs {
-    left: 12px;
-    bottom: 12px;
-    max-width: calc(100vw - 84px);
-    padding: 6px;
-    border-radius: 12px;
+  .floating-action-container {
+    left: 14px;
+    bottom: 60px;
   }
-  .tab-item {
-    padding: 8px 14px;
-    font-size: 14px;
+  .fab-btn {
+    width: 42px;
+    height: 42px;
   }
   .format-drawer {
-    bottom: 74px;
-    width: calc(100vw - 24px);
-    padding: 12px 14px;
+    bottom: 64px;
+    width: calc(100vw - 20px);
   }
-  .desktop-only {
-    display: none !important;
-  }
-  .mobile-only {
-    display: flex !important;
-  }
-}
-
-/* REGRAS DE PC (> 768px) */
-@media (min-width: 769px) {
-  .desktop-only {
-    display: flex !important;
-  }
-  .mobile-only {
+  /* No celular, o botão isolado se esconde para não poluir a tela */
+  .top-exit-btn {
     display: none !important;
   }
 }
