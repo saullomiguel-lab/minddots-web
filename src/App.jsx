@@ -19,7 +19,7 @@ export default function App() {
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Estados do Pop-up de Inatividade (30 minutos + 30 segundos de contagem)
+  // Estados de Inatividade
   const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
   const [inactivityCountdown, setInactivityCountdown] = useState(30);
 
@@ -142,10 +142,9 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadRecentOrCreateMap]);
 
-  // SISTEMA ROBUSTO DE INATIVIDADE (30 MINUTOS + COMPATÍVEL COM TELA BLOQUEADA)
+  // Temporizador de Inatividade
   useEffect(() => {
     if (!user) return;
-
     const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutos
 
     const updateActivity = () => {
@@ -161,7 +160,6 @@ export default function App() {
     const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
     events.forEach((ev) => window.addEventListener(ev, updateActivity, { passive: true }));
 
-    // Checa inatividade periodicamente e sempre que a aba/tela é desbloqueada
     const checkInactivity = () => {
       if (isInactivityModalOpen) return;
       const lastActive = parseInt(localStorage.getItem('minddots_last_active') || '0', 10);
@@ -183,10 +181,9 @@ export default function App() {
     };
   }, [user, isInactivityModalOpen]);
 
-  // Contador Regressivo de 30 segundos
+  // Contagem regressiva de 30 segundos
   useEffect(() => {
     if (!isInactivityModalOpen) return;
-
     const timer = setInterval(() => {
       setInactivityCountdown((prev) => {
         if (prev <= 1) {
@@ -198,7 +195,6 @@ export default function App() {
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(timer);
   }, [isInactivityModalOpen]);
 
@@ -214,7 +210,7 @@ export default function App() {
     supabase.auth.signOut();
   };
 
-  // Auto-salvamento na Nuvem
+  // Auto-salvamento
   useEffect(() => {
     if (!currentMap || !user || tabs.length === 0) return;
     const saveTimer = setTimeout(async () => {
@@ -545,29 +541,27 @@ export default function App() {
   return (
     <div ref={containerRef} className={`canvas-container ${isPanning ? 'panning' : ''}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDoubleClick={handleDoubleClickCanvas} onContextMenu={(e) => e.preventDefault()}>
       
-      {/* 1. CONTAINER DO TOPO (FLEXÍVEL: BARRA SUPERIOR EM CIMA, NOME + NUVEM LOGO ABAIXO) */}
-      <div className="top-wrapper">
-        <Toolbar 
-          onAddNode={handleAddNode} onExportImage={handleExportImage} onExportFile={handleExportFile} 
-          onAddImage={(img) => { if (selectedNodeId) { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true); } }}
-          selectedNode={selectedNode || (selectedConnectionId ? { isConnection: true } : null)}
-          onUpdateSelected={(patch) => { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => { if (n.id !== selectedNodeId) return n; return { ...n, backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor, fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize, textAlignment: patch.align !== undefined ? patch.align : n.textAlignment }; }) }), true); }}
-          onDeleteSelected={handleDeleteSelected} onResetView={() => fitContentToScreen(activeTab.nodes)}
-          onOpenMaps={() => setIsMapsOpen(true)} onOpenAdmin={() => setIsAdminOpen(true)} onOpenTeam={() => setIsTeamOpen(true)}
-          isAdmin={isUserAdminOrTeamOwner} user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={handleManualLogout}
-          onUndo={handleUndo} onRedo={handleRedo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
-        />
+      {/* 1. BARRA DE FERRAMENTAS E CONTROLES (ISOLADOS E INDEPENDENTES) */}
+      <Toolbar 
+        onAddNode={handleAddNode} onExportImage={handleExportImage} onExportFile={handleExportFile} 
+        onAddImage={(img) => { if (selectedNodeId) { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === selectedNodeId ? { ...n, imageData: img } : n)) }), true); } }}
+        selectedNode={selectedNode || (selectedConnectionId ? { isConnection: true } : null)}
+        onUpdateSelected={(patch) => { updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => { if (n.id !== selectedNodeId) return n; return { ...n, backgroundColor: patch.color !== undefined ? patch.color : n.backgroundColor, fontSize: patch.fontSize !== undefined ? patch.fontSize : n.fontSize, textAlignment: patch.align !== undefined ? patch.align : n.textAlignment }; }) }), true); }}
+        onDeleteSelected={handleDeleteSelected} onResetView={() => fitContentToScreen(activeTab.nodes)}
+        onOpenMaps={() => setIsMapsOpen(true)} onOpenAdmin={() => setIsAdminOpen(true)} onOpenTeam={() => setIsTeamOpen(true)}
+        isAdmin={isUserAdminOrTeamOwner} user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={handleManualLogout}
+        onUndo={handleUndo} onRedo={handleRedo} canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
+      />
 
-        {/* Crachá do Nome do Usuário com a Nuvem e Edição por Duplo Clique */}
-        <UserProfileBadge
-          user={user}
-          profile={profile}
-          isSaving={isSaving}
-          onUpdateName={handleUpdateUserName}
-        />
-      </div>
+      {/* 2. CRACHÁ DO NOME DO USUÁRIO CENTRALIZADO (INDEPENDENTE, NUNCA SOBREPÕE) */}
+      <UserProfileBadge
+        user={user}
+        profile={profile}
+        isSaving={isSaving}
+        onUpdateName={handleUpdateUserName}
+      />
 
-      {/* 2. CAMADA DAS CONEXÕES E SETAS */}
+      {/* 3. CAMADA DAS CONEXÕES E SETAS */}
       <CanvasConnections
         connections={activeTab.connections}
         nodes={activeTab.nodes}
@@ -583,7 +577,7 @@ export default function App() {
         onResetCurve={handleResetCurve}
       />
 
-      {/* 3. CAMADA DOS BALÕES */}
+      {/* 4. CAMADA DOS BALÕES */}
       <div style={{ position: 'absolute', top: 0, left: 0, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
         {activeTab.nodes.map((node, index) => (
           <div key={node.id} style={{ pointerEvents: 'auto' }}>
@@ -600,7 +594,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* 4. BARRA DE ABAS NO RODAPÉ */}
+      {/* 5. BARRA DE ABAS NO RODAPÉ */}
       {currentMap && (
         <TabsBar
           tabs={safeTabs}
@@ -616,7 +610,7 @@ export default function App() {
         />
       )}
 
-      {/* 5. MÓDULO DE TODAS AS JANELAS MODAIS */}
+      {/* 6. MÓDULO DE TODAS AS JANELAS MODAIS */}
       <AppModals
         user={user}
         profile={profile}
@@ -632,7 +626,7 @@ export default function App() {
         loadUserProfile={loadUserProfile}
       />
 
-      {/* 6. POP-UP DE SEGURANÇA POR INATIVIDADE (30 MINUTOS + 30s REGRESSIVOS) */}
+      {/* 7. POP-UP DE SEGURANÇA POR INATIVIDADE */}
       <InactivityModal
         isOpen={isInactivityModalOpen}
         countdown={inactivityCountdown}
