@@ -124,10 +124,10 @@ body, html, #root {
   border-color: #FCA5A5;
 }
 
-/* 2. AS 4 BOLINHAS FLUTUANTES (CANTO INFERIOR ESQUERDO) */
+/* 2. AS 4 BOLINHAS FLUTUANTES (NO CANTO INFERIOR DIREITO) */
 .floating-action-container {
   position: fixed;
-  left: 18px;
+  right: 18px;
   bottom: 64px;
   display: flex;
   flex-direction: column;
@@ -166,7 +166,7 @@ body, html, #root {
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* 3. GAVETA CONTEXTUAL */
+/* 3. GAVETA CONTEXTUAL (SÓ SURGE QUANDO BALÃO É SELECIONADO) */
 .format-drawer {
   display: none;
   position: fixed;
@@ -213,7 +213,7 @@ body, html, #root {
   position: fixed;
   bottom: 12px;
   left: 16px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 86px);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
   padding: 4px;
@@ -283,12 +283,12 @@ body, html, #root {
     padding: 6px 7px;
   }
   .floating-action-container {
-    left: 14px;
-    bottom: 60px;
+    right: 16px;
+    bottom: 64px;
   }
   .fab-btn {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
   }
   .format-drawer {
     bottom: 64px;
