@@ -6,7 +6,6 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
   const [nameInput, setNameInput] = useState('');
   const lastTapRef = useRef(0);
 
-  // Detecta se a tela é celular para dar o respiro correto
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false
   );
@@ -38,7 +37,7 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
     }
   };
 
-  // Sensor de Duplo Toque no Celular (Double Tap)
+  // Sensor de Duplo Toque no Celular
   const handleTouch = (e) => {
     if (isEditing) return;
     const now = Date.now();
@@ -55,22 +54,22 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
     <div
       style={{
         position: 'fixed',
-        // Respiro adaptativo: 72px no celular e 60px no PC
-        top: isMobile ? '72px' : '60px',
+        top: isMobile ? '64px' : '58px',
         left: '50%',
         transform: 'translateX(-50%)',
-        zIndex: 120,
+        zIndex: 100,
         display: 'inline-flex',
         alignItems: 'center',
         gap: '8px',
         backgroundColor: '#FFFFFF',
         border: '1.5px solid #CBD5E1',
         borderRadius: '9999px',
-        padding: isMobile ? '4px 14px' : '5px 16px',
-        boxShadow: '0 3px 12px rgba(0, 0, 0, 0.08)',
+        padding: '3px 14px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
         userSelect: 'none',
         pointerEvents: 'auto',
-        transition: 'top 0.2s ease, all 0.15s ease'
+        whiteSpace: 'nowrap', // Impede que o texto quebre em duas linhas
+        boxSizing: 'border-box'
       }}
     >
       {/* Nuvem com status de salvamento */}
@@ -80,15 +79,16 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
           display: 'flex',
           alignItems: 'center',
           color: isSaving ? '#F59E0B' : '#10B981',
-          transition: 'color 0.2s'
+          transition: 'color 0.2s',
+          flexShrink: 0
         }}
       >
-        <Cloud size={15} />
+        <Cloud size={14} />
       </span>
 
       {/* Campo de Edição ou Nome no Balãozinho */}
       {isEditing ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <input
             type="text"
             value={nameInput}
@@ -103,7 +103,7 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
               border: 'none',
               outline: 'none',
               background: 'transparent',
-              width: isMobile ? '110px' : '125px',
+              width: '110px',
               padding: 0
             }}
           />
@@ -113,14 +113,15 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
               background: '#10B981',
               border: 'none',
               borderRadius: '50%',
-              width: '20px',
-              height: '20px',
+              width: '18px',
+              height: '18px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#FFFFFF',
               cursor: 'pointer',
-              padding: 0
+              padding: 0,
+              flexShrink: 0
             }}
           >
             <Check size={12} strokeWidth={3} />
@@ -130,18 +131,18 @@ export default function UserProfileBadge({ user, profile, isSaving, onUpdateName
         <div
           onDoubleClick={() => setIsEditing(true)}
           onTouchStart={handleTouch}
-          title="Dois cliques (ou 2 toques) para alterar seu nome"
+          title="Dois cliques para alterar seu nome"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '5px',
             cursor: 'pointer'
           }}
         >
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
             {profile?.name || 'Usuário'}
           </span>
-          <Pencil size={11} color="#94A3B8" />
+          <Pencil size={11} color="#94A3B8" style={{ opacity: 0.7 }} />
         </div>
       )}
     </div>
