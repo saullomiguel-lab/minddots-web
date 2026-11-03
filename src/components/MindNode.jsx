@@ -12,7 +12,7 @@ export default function MindNode({
   onResizeStart,
   onUpdateText,
   onPaste,
-  onHeightChange
+  onHeightSync
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text || '');
@@ -20,23 +20,23 @@ export default function MindNode({
   const nodeRef = useRef(null);
   const pasteFileRef = useRef(null);
 
-  // Sensor de Duplo Toque no Celular (Double Tap)
-  const lastTapRef = useRef(0);
+  // Sensores de Distinção: 1 Clique Digita | Arrastar Move
+  const dragStartPosRef = useRef(null);
+  const hasDraggedRef = useRef(false);
 
   useEffect(() => {
     setEditText(node.text || '');
   }, [node.text]);
 
   useEffect(() => {
-    if (nodeRef.current && onHeightChange) {
+    if (nodeRef.current && onHeightSync) {
       const actualHeight = nodeRef.current.offsetHeight;
       if (actualHeight && Math.abs(actualHeight - (node.height || 0)) > 2) {
-        onHeightChange(node.id, actualHeight);
+        onHeightSync(node.id, actualHeight);
       }
     }
   });
 
-  // Foco imediato e expansão ao abrir o editor
   useEffect(() => {
     if (isEditing && editorRef.current) {
       editorRef.current.focus();
@@ -47,48 +47,18 @@ export default function MindNode({
     }
   }, [isEditing]);
 
-  const handleDoubleClick = (e) => {
-    e.stopPropagation();
-    setIsEditing(true);
-  };
-
-  // Sensor Touch: 1 toque arrasta, 2 toques rápidos abrem para escrever
-  const handleTouchStartNode = (e) => {
-    if (isEditing) return;
-
-    if (e.touches.length === 1) {
-      const now = Date.now();
-      const timeSinceLastTap = now - lastTapRef.current;
-
-      // Se tocou duas vezes em menos de 340 milissegundos: ATIVA DIGITAÇÃO!
-      if (timeSinceLastTap > 0 && timeSinceLastTap < 340) {
-        e.stopPropagation();
-        e.preventDefault();
-        setIsEditing(true);
-        lastTapRef.current = 0;
-        return;
-      }
-
-      lastTapRef.current = now;
-      onSelect(e, node.id);
-      const t = e.touches[0];
-      onStartDrag({ clientX: t.clientX, clientY: t.clientY }, node.id);
-    }
-  };
-
   const finishEditing = () => {
     setIsEditing(false);
     onUpdateText(node.id, editText.trim());
   };
 
+  // ENTER AGORA PULA LINHA LIVREMENTE (Escape cancela e clique fora salva)
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      finishEditing();
-    } else if (e.key === 'Escape') {
+    if (e.key === 'Escape') {
       setEditText(node.text || '');
       setIsEditing(false);
     }
+    // O Enter não é mais bloqueado: pula linha nativamente!
   };
 
   const handleInput = (e) => {
@@ -97,6 +67,82 @@ export default function MindNode({
       editorRef.current.style.height = 'auto';
       editorRef.current.style.height = `${Math.max(editorRef.current.scrollHeight, 26)}px`;
     }
+  };
+
+  // MECÂNICA DINÂMICA NO COMPUTADOR: 1 CLIQUE DIGITA | ARRASTAR MOVE
+  const handleMouseDownNode = (e) => {
+    if (e.button !== 0) return;
+    onSelect(e, node.id);
+
+    if (isEditing) return; // Se já está digitando, deixa o cursor do texto agir
+
+    dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+    hasDraggedRef.current = false;
+
+    const onMouseMove = (moveEvt) => {
+      if (!dragStartPosRef.current) return;
+      const dist = Math.hypot(
+        moveEvt.clientX - dragStartPosRef.current.x,
+        moveEvt.clientY - dragStartPosRef.current.y
+      );
+      // Se moveu mais de 4 pixels, ativa o modo de arrastar o balão
+      if (dist > 4) {
+        hasDraggedRef.current = true;
+        onStartDrag(dragStartPosRef.current, node.id);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      }
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      // Se soltou o clique sem ter arrastado: abre para digitar na hora!
+      if (!hasDraggedRef.current) {
+        setIsEditing(true);
+      }
+      dragStartPosRef.current = null;
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  // MECÂNICA DINÂMICA NO CELULAR (TOUCH): 1 TOQUE DIGITA | ARRASTAR MOVE
+  const handleTouchStartNode = (e) => {
+    if (isEditing || e.touches.length !== 1) return;
+    onSelect(e, node.id);
+
+    const t = e.touches[0];
+    dragStartPosRef.current = { x: t.clientX, y: t.clientY };
+    hasDraggedRef.current = false;
+
+    const onTouchMove = (moveEvt) => {
+      if (!dragStartPosRef.current || moveEvt.touches.length !== 1) return;
+      const mt = moveEvt.touches[0];
+      const dist = Math.hypot(
+        mt.clientX - dragStartPosRef.current.x,
+        mt.clientY - dragStartPosRef.current.y
+      );
+      if (dist > 6) {
+        hasDraggedRef.current = true;
+        onStartDrag({ clientX: dragStartPosRef.current.x, clientY: dragStartPosRef.current.y }, node.id);
+        window.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('touchend', onTouchEnd);
+      }
+    };
+
+    const onTouchEnd = () => {
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      if (!hasDraggedRef.current) {
+        setIsEditing(true);
+      }
+      dragStartPosRef.current = null;
+    };
+
+    window.addEventListener('touchmove', onTouchMove);
+    window.addEventListener('touchend', onTouchEnd);
   };
 
   const handlePasteClick = async (e) => {
@@ -184,16 +230,8 @@ export default function MindNode({
         touchAction: 'none',
         zIndex: isSelected ? 20 : 5
       }}
-      // Mouse no Computador
-      onMouseDown={(e) => {
-        if (e.button === 0 && !isEditing) {
-          onSelect(e, node.id);
-          onStartDrag(e, node.id);
-        }
-      }}
-      // Sensor Inteligente de Toque no Celular
+      onMouseDown={handleMouseDownNode}
       onTouchStart={handleTouchStartNode}
-      onDoubleClick={handleDoubleClick}
     >
       {/* Botão Flutuante 📋 Colar */}
       {isSelected && !isEditing && (
@@ -342,7 +380,7 @@ export default function MindNode({
         />
       )}
 
-      {/* Editor de Texto Multilinha */}
+      {/* Editor de Texto Multilinha com Enter Direto */}
       {isEditing ? (
         <textarea
           ref={editorRef}
