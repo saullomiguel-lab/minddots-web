@@ -67,8 +67,9 @@ export default function App() {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     nodes.forEach((n) => {
       const w = n.width || 170; const h = n.height || 75;
-      if (n.x < minX) minX = n.x; if (n.x + w > maxX) maxX = n.x + w;
-      if (n.y < minY) minY = n.y; if (n.y + h > maxY) maxY = n.y + h;
+      const nx = Number(n.x) || 0; const ny = Number(n.y) || 0;
+      if (nx < minX) minX = nx; if (nx + w > maxX) maxX = nx + w;
+      if (ny < minY) minY = ny; if (ny + h > maxY) maxY = ny + h;
     });
     const contentW = Math.max(maxX - minX, 120); const contentH = Math.max(maxY - minY, 80);
     const availableW = window.innerWidth - padding * 2; const availableH = window.innerHeight - padding * 2 - 60;
@@ -405,43 +406,68 @@ export default function App() {
     updateActiveTabData((t) => ({ ...t, connections: t.connections.map((c) => c.id === connId ? { ...c, cp1Offset: null, cp2Offset: null } : c) }), true);
   };
 
+  // MONITORAMENTO DO MOUSE E TOUCH COM PROTEÇÃO ANTI-NAN
   useEffect(() => {
     const onPointerMove = (clientX, clientY) => {
       if (isPanning) {
         setTransform((prev) => ({ ...prev, x: clientX - panStartRef.current.x, y: clientY - panStartRef.current.y }));
       } else if (draggingNode) {
-        const dx = (clientX - draggingNode.startX) / transform.scale; const dy = (clientY - draggingNode.startY) / transform.scale;
-        updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n) }));
+        const dx = (clientX - draggingNode.startX) / transform.scale;
+        const dy = (clientY - draggingNode.startY) / transform.scale;
+        // TRAVA MATEMÁTICA ANTI-NAN: Só atualiza se o cálculo for um número válido!
+        if (!isNaN(dx) && !isNaN(dy)) {
+          updateActiveTabData((t) => ({
+            ...t,
+            nodes: t.nodes.map((n) =>
+              n.id === draggingNode.id ? { ...n, x: draggingNode.origX + dx, y: draggingNode.origY + dy } : n
+            )
+          }));
+        }
       } else if (resizingNode) {
-        const dx = (clientX - resizingNode.startX) / transform.scale; const dy = (clientY - resizingNode.startY) / transform.scale; const dir = resizingNode.direction;
-        let newW = resizingNode.origW, newH = resizingNode.origH, newX = resizingNode.origX, newY = resizingNode.origY;
-        if (dir.includes('right')) newW = Math.max(120, resizingNode.origW + dx);
-        if (dir.includes('left')) { newW = Math.max(120, resizingNode.origW - dx); newX = resizingNode.origX + (resizingNode.origW - newW); }
-        if (dir.includes('bottom')) newH = Math.max(60, resizingNode.origH + dy);
-        if (dir.includes('top')) { newH = Math.max(60, resizingNode.origH - dy); newY = resizingNode.origY + (resizingNode.origH - newH); }
-        updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => n.id === resizingNode.id ? { ...n, x: newX, y: newY, width: newW, height: newH } : n) }));
+        const dx = (clientX - resizingNode.startX) / transform.scale;
+        const dy = (clientY - resizingNode.startY) / transform.scale;
+        if (!isNaN(dx) && !isNaN(dy)) {
+          const dir = resizingNode.direction;
+          let newW = resizingNode.origW, newH = resizingNode.origH, newX = resizingNode.origX, newY = resizingNode.origY;
+          if (dir.includes('right')) newW = Math.max(120, resizingNode.origW + dx);
+          if (dir.includes('left')) { newW = Math.max(120, resizingNode.origW - dx); newX = resizingNode.origX + (resizingNode.origW - newW); }
+          if (dir.includes('bottom')) newH = Math.max(60, resizingNode.origH + dy);
+          if (dir.includes('top')) { newH = Math.max(60, resizingNode.origH - dy); newY = resizingNode.origY + (resizingNode.origH - newH); }
+          updateActiveTabData((t) => ({
+            ...t,
+            nodes: t.nodes.map((n) =>
+              n.id === resizingNode.id ? { ...n, x: newX, y: newY, width: newW, height: newH } : n
+            )
+          }));
+        }
       } else if (connecting) {
-        const canvasMouseX = (clientX - transform.x) / transform.scale; const canvasMouseY = (clientY - transform.y) / transform.scale;
-        setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
+        const canvasMouseX = (clientX - transform.x) / transform.scale;
+        const canvasMouseY = (clientY - transform.y) / transform.scale;
+        if (!isNaN(canvasMouseX) && !isNaN(canvasMouseY)) {
+          setConnecting((prev) => ({ ...prev, currentX: canvasMouseX, currentY: canvasMouseY }));
+        }
       } else if (draggingCP) {
-        const canvasMouseX = (clientX - transform.x) / transform.scale; const canvasMouseY = (clientY - transform.y) / transform.scale;
-        updateActiveTabData((t) => ({
-          ...t, connections: t.connections.map((c) => {
-            if (c.id !== draggingCP.connId) return c;
-            const fromNode = t.nodes.find((n) => n.id === c.fromNodeId); const toNode = t.nodes.find((n) => n.id === c.toNodeId);
-            if (!fromNode || !toNode) return c;
-            const p1 = getPortPosition(fromNode, c.fromPortIndex); const p2 = getPortPosition(toNode, c.toPortIndex);
-            let cp1Off = c.cp1Offset; let cp2Off = c.cp2Offset;
-            if (!cp1Off || !cp2Off) {
-              const autoCps = getBezierControlPoints(p1, p2);
-              cp1Off = { dx: autoCps.cp1.x - p1.x, dy: autoCps.cp1.y - p1.y };
-              cp2Off = { dx: autoCps.cp2.x - p2.x, dy: autoCps.cp2.y - p2.y };
-            }
-            if (draggingCP.cpIndex === 1) { cp1Off = { dx: canvasMouseX - p1.x, dy: canvasMouseY - p1.y }; }
-            else { cp2Off = { dx: canvasMouseX - p2.x, dy: canvasMouseY - p2.y }; }
-            return { ...c, cp1Offset: cp1Off, cp2Offset: cp2Off };
-          })
-        }));
+        const canvasMouseX = (clientX - transform.x) / transform.scale;
+        const canvasMouseY = (clientY - transform.y) / transform.scale;
+        if (!isNaN(canvasMouseX) && !isNaN(canvasMouseY)) {
+          updateActiveTabData((t) => ({
+            ...t, connections: t.connections.map((c) => {
+              if (c.id !== draggingCP.connId) return c;
+              const fromNode = t.nodes.find((n) => n.id === c.fromNodeId); const toNode = t.nodes.find((n) => n.id === c.toNodeId);
+              if (!fromNode || !toNode) return c;
+              const p1 = getPortPosition(fromNode, c.fromPortIndex); const p2 = getPortPosition(toNode, c.toPortIndex);
+              let cp1Off = c.cp1Offset; let cp2Off = c.cp2Offset;
+              if (!cp1Off || !cp2Off) {
+                const autoCps = getBezierControlPoints(p1, p2);
+                cp1Off = { dx: autoCps.cp1.x - p1.x, dy: autoCps.cp1.y - p1.y };
+                cp2Off = { dx: autoCps.cp2.x - p2.x, dy: autoCps.cp2.y - p2.y };
+              }
+              if (draggingCP.cpIndex === 1) { cp1Off = { dx: canvasMouseX - p1.x, dy: canvasMouseY - p1.y }; }
+              else { cp2Off = { dx: canvasMouseX - p2.x, dy: canvasMouseY - p2.y }; }
+              return { ...c, cp1Offset: cp1Off, cp2Offset: cp2Off };
+            })
+          }));
+        }
       }
     };
 
@@ -450,7 +476,7 @@ export default function App() {
       if (connecting && !connecting.connected) {
         const dropX = connecting.currentX; const dropY = connecting.currentY;
         if (connecting.reanchorEnd === 'from') {
-          const originNode = activeTab.nodes.find((n) => { const w = n.width || 170; const h = n.height || 75; return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24; });
+          const originNode = activeTab.nodes.find((n) => { const w = n.width || 170; const h = n.height || 75; const nx = Number(n.x) || 0; const ny = Number(n.y) || 0; return dropX >= nx - 24 && dropX <= nx + w + 24 && dropY >= ny - 24 && dropY <= ny + h + 24; });
           if (originNode && originNode.id !== connecting.targetNodeId) {
             let bestPort = 0; let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(originNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
@@ -463,7 +489,7 @@ export default function App() {
             setTabs(nextTabs); pushToHistory(nextTabs);
           }
         } else {
-          const targetNode = activeTab.nodes.find((n) => { if (n.id === connecting.fromNodeId) return false; const w = n.width || 170; const h = n.height || 75; return dropX >= n.x - 24 && dropX <= n.x + w + 24 && dropY >= n.y - 24 && dropY <= n.y + h + 24; });
+          const targetNode = activeTab.nodes.find((n) => { if (n.id === connecting.fromNodeId) return false; const w = n.width || 170; const h = n.height || 75; const nx = Number(n.x) || 0; const ny = Number(n.y) || 0; return dropX >= nx - 24 && dropX <= nx + w + 24 && dropY >= ny - 24 && dropY <= ny + h + 24; });
           if (targetNode) {
             let bestPort = 0; let minDist = Infinity;
             [0, 1, 2, 3].forEach((pIdx) => { const pos = getPortPosition(targetNode, pIdx); const d = Math.hypot(dropX - pos.x, dropY - pos.y); if (d < minDist) { minDist = d; bestPort = pIdx; } });
@@ -478,7 +504,7 @@ export default function App() {
             const fromNode = activeTab.nodes.find((n) => n.id === connecting.fromNodeId);
             let bestToPort = 3;
             if (fromNode) {
-              const parentCenterX = fromNode.x + (fromNode.width || 170) / 2; const parentCenterY = fromNode.y + (fromNode.height || 75) / 2;
+              const parentCenterX = (Number(fromNode.x) || 0) + (fromNode.width || 170) / 2; const parentCenterY = (Number(fromNode.y) || 0) + (fromNode.height || 75) / 2;
               const dx = connecting.currentX - parentCenterX; const dy = connecting.currentY - parentCenterY;
               if (Math.abs(dy) > Math.abs(dx)) { bestToPort = dy > 0 ? 0 : 2; } else { bestToPort = dx > 0 ? 3 : 1; }
             }
@@ -493,8 +519,8 @@ export default function App() {
       setIsPanning(false); setDraggingNode(null); setResizingNode(null); setConnecting(null); setDraggingCP(null);
     };
 
-    // SENSOR DE HARDWARE ANTI-SETA GRUDADA (e.buttons === 0)
     const onWindowMouseMove = (e) => {
+      // Se soltar o clique, cancela imediatamente
       if (e.buttons === 0 && (connecting || draggingNode || resizingNode || draggingCP)) {
         onPointerUp();
         return;
@@ -599,16 +625,40 @@ export default function App() {
         onResetCurve={handleResetCurve}
       />
 
-      {/* 4. CAMADA DOS BALÕES */}
+      {/* 4. CAMADA DOS BALÕES (COM ARRASTO E COORDENADAS BLINDADAS) */}
       <div style={{ position: 'absolute', top: 0, left: 0, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
         {activeTab.nodes.map((node, index) => (
           <div key={node.id} style={{ pointerEvents: 'auto' }}>
             <MindNode
               node={node} isSelected={selectedNodeId === node.id} isRoot={index === 0}
               onSelect={(e, id) => { setSelectedNodeId(id); setSelectedConnectionId(null); }}
-              onStartDrag={(pos, id) => { setDraggingNode({ id, startX: pos.clientX, startY: pos.clientY, origX: node.x, origY: node.y }); }}
+              onStartDrag={(pos, id) => {
+                const clientX = pos.clientX !== undefined ? pos.clientX : (pos.x !== undefined ? pos.x : 0);
+                const clientY = pos.clientY !== undefined ? pos.clientY : (pos.y !== undefined ? pos.y : 0);
+                setDraggingNode({
+                  id,
+                  startX: clientX,
+                  startY: clientY,
+                  origX: Number(node.x) || 0,
+                  origY: Number(node.y) || 0
+                });
+              }}
               onPortMouseDown={handlePortMouseDown} onPortMouseUp={handlePortMouseUp} onHeightSync={handleHeightSync}
-              onResizeStart={(pos, id, dir) => { const n = activeTab.nodes.find(x => x.id === id); setResizingNode({ id, direction: dir, startX: pos.clientX, startY: pos.clientY, origX: n.x, origY: n.y, origW: n.width || 170, origH: n.height || 75 }); }}
+              onResizeStart={(pos, id, dir) => {
+                const n = activeTab.nodes.find(x => x.id === id);
+                const clientX = pos.clientX !== undefined ? pos.clientX : (pos.x !== undefined ? pos.x : 0);
+                const clientY = pos.clientY !== undefined ? pos.clientY : (pos.y !== undefined ? pos.y : 0);
+                setResizingNode({
+                  id,
+                  direction: dir,
+                  startX: clientX,
+                  startY: clientY,
+                  origX: Number(n.x) || 0,
+                  origY: Number(n.y) || 0,
+                  origW: n.width || 170,
+                  origH: n.height || 75
+                });
+              }}
               onUpdateText={(id, text) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, text } : n)) }), true)}
               onPaste={(id, patch) => updateActiveTabData((t) => ({ ...t, nodes: t.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }), true)}
             />
