@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   Plus, 
   Image as ImageIcon, 
@@ -43,6 +43,17 @@ export default function Toolbar({
 }) {
   const fileInputRef = useRef(null);
 
+  // Detecta se a tela é celular para adaptar o botão Sair
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -57,39 +68,48 @@ export default function Toolbar({
 
   return (
     <>
-      {/* 1. BARRA SUPERIOR ULTRA-CLEAN */}
+      {/* 1. BARRA SUPERIOR CENTRALIZADA */}
       <header className="top-toolbar">
+        {/* Meus Mapas */}
         <button className="btn-icon" title="Meus Mapas" onClick={onOpenMaps}>
           <FolderOpen size={18} />
         </button>
 
         <div className="divider" />
 
+        {/* Exportar Imagem (JPG) */}
         <button className="btn-icon" title="Exportar Imagem (JPG)" onClick={onExportImage}>
           <FileImage size={18} />
         </button>
+
+        {/* Exportar Arquivo (JSON) */}
         <button className="btn-icon" title="Exportar Arquivo (JSON)" onClick={onExportFile}>
           <FileDown size={18} />
         </button>
 
         <div className="divider" />
 
+        {/* Minha Equipe */}
         {user && (
           <button className="btn-icon" title="Minha Equipe" onClick={onOpenTeam} style={{ color: '#0EA5E9' }}>
             <Users size={18} />
           </button>
         )}
 
+        {/* Painel do Administrador */}
         {isAdmin && (
           <button className="btn-icon" title="Painel do Administrador" onClick={onOpenAdmin} style={{ color: '#2563EB' }}>
             <Shield size={18} />
           </button>
         )}
 
+        {/* No Celular: Ícone de Sair compacto dentro da barra */}
         {user ? (
-          <button className="btn-icon" title="Sair da Conta" onClick={onLogout}>
-            <LogOut size={16} />
-          </button>
+          isMobile && (
+            <button className="btn-icon" title="Sair da Conta" onClick={onLogout} style={{ color: '#DC2626' }}>
+              <LogOut size={16} />
+            </button>
+          )
         ) : (
           <button className="btn-icon" title="Entrar" onClick={onOpenAuth} style={{ color: '#2563EB' }}>
             <LogIn size={16} />
@@ -97,9 +117,22 @@ export default function Toolbar({
         )}
       </header>
 
+      {/* BOTÃO "SAIR" ISOLADO NO CANTO SUPERIOR DIREITO (PC) */}
+      {user && !isMobile && (
+        <button 
+          className="top-exit-btn" 
+          title="Sair da Conta" 
+          onClick={onLogout}
+        >
+          <LogOut size={16} />
+          <span>Sair</span>
+        </button>
+      )}
+
+      {/* Input oculto para upload de imagem */}
       <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" style={{ display: 'none' }} />
 
-      {/* 2. BOTÕES FLUTUANTES (AS 4 BOLINHAS EMPILHADAS) */}
+      {/* 2. AS 4 BOLINHAS FLUTUANTES (CANTO INFERIOR ESQUERDO) */}
       <div className="floating-action-container">
         {/* Bolinha 1: Avançar (Refazer) */}
         <button 
@@ -123,7 +156,7 @@ export default function Toolbar({
           <Undo2 size={19} />
         </button>
 
-        {/* Bolinha 3: Centralizar */}
+        {/* Bolinha 3: Centralizar (P) */}
         <button 
           className="fab-btn secondary" 
           title="Encaixar na Tela (Tecla P)" 
@@ -132,7 +165,7 @@ export default function Toolbar({
           <Target size={20} />
         </button>
 
-        {/* Bolinha 4: Nova Ideia */}
+        {/* Bolinha 4: Nova Ideia (+) */}
         <button 
           className="fab-btn" 
           title="Nova Ideia (+)" 
@@ -142,7 +175,7 @@ export default function Toolbar({
         </button>
       </div>
 
-      {/* 3. GAVETA DE FORMATAÇÃO CONTEXTUAL (SÓ SURGE QUANDO BALÃO É SELECIONADO) */}
+      {/* 3. GAVETA CONTEXTUAL (SÓ APARECE AO CLICAR EM UM BALÃO) */}
       <div className={`format-drawer ${selectedNode ? 'active' : ''}`}>
         {isNodeActive ? (
           <>
